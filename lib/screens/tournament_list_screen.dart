@@ -373,11 +373,11 @@ class _TournamentListScreenState extends State<TournamentListScreen> {
               ),
             ],
           ),
-          child: const Row(
+          child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(LucideIcons.plus, size: 20, color: Colors.white),
-              SizedBox(width: 10),
+              const Icon(LucideIcons.plus, size: 20, color: Colors.white),
+              const SizedBox(width: 10),
               Text(
                 'Créer un $_noun',
                 style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white),
@@ -658,7 +658,7 @@ class _TournamentListScreenState extends State<TournamentListScreen> {
           Expanded(
             child: Text(
               text,
-              style: const TextStyle(fontSize: 13, color: slate600),
+              style: const TextStyle(fontSize: 13, color: slate500),
             ),
           ),
         ],

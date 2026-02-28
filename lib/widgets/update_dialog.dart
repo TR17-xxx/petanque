@@ -79,7 +79,7 @@ Future<bool> showUpdateDialog(BuildContext context, UpdateInfo info) async {
                 info.changelog.isNotEmpty
                     ? info.changelog
                     : 'Améliorations et corrections.',
-                style: const TextStyle(fontSize: 13, color: slate600, height: 1.5),
+                style: const TextStyle(fontSize: 13, color: slate500, height: 1.5),
               ),
             ),
           ),
@@ -149,7 +149,7 @@ Future<bool> showPermissionDialog(BuildContext context) async {
         'Pour installer la mise à jour, vous devez autoriser '
         'l\'installation depuis cette application dans les paramètres Android.\n\n'
         'Activez « Autoriser depuis cette source » puis revenez dans l\'app.',
-        style: TextStyle(fontSize: 13, color: slate600, height: 1.5),
+        style: TextStyle(fontSize: 13, color: slate500, height: 1.5),
       ),
       actions: [
         TextButton(
@@ -319,7 +319,7 @@ class _DownloadDialogState extends State<_DownloadDialog> {
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 13,
-              color: _error ? const Color(0xFFEF4444) : slate600,
+              color: _error ? const Color(0xFFEF4444) : slate500,
             ),
           ),
         ],
