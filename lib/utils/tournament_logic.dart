@@ -246,6 +246,7 @@ List<PoolMatch> _generateChampionnatMatches(String poolId, List<String> teamIds,
   // Si bye au Tour 1, propager immédiatement le gagnant du bye
   if (hasbye && m2.winnerId != null) {
     _propagateChampionnatResult(matches, m2.id, m2.winnerId!, '');
+    _autoCompleteByes(matches);
   }
 
   return matches;
@@ -253,6 +254,7 @@ List<PoolMatch> _generateChampionnatMatches(String poolId, List<String> teamIds,
 
 void propagateChampionnatPoolWinner(Pool pool, String matchId, String winnerId, String loserId) {
   _propagateChampionnatResult(pool.matches, matchId, winnerId, loserId);
+  _autoCompleteByes(pool.matches);
 }
 
 void _propagateChampionnatResult(List<PoolMatch> matches, String matchId, String winnerId, String loserId) {
@@ -284,6 +286,49 @@ void _propagateChampionnatResult(List<PoolMatch> matches, String matchId, String
         } else {
           m.team2Id = winnerId; // Gagnant du match des perdants
         }
+      }
+    }
+  }
+}
+
+/// Auto-complète les matchs où un seul adversaire est présent (bye).
+/// Cela arrive dans les poules de 3 : le perdant du bye est '' (vide),
+/// donc le match des perdants a un seul vrai adversaire.
+void _autoCompleteByes(List<PoolMatch> matches) {
+  bool changed = true;
+  while (changed) {
+    changed = false;
+    for (final m in matches) {
+      if (m.winnerId != null) continue;
+      if (m.matchType == 'initial') continue;
+
+      // Vérifier que les deux sources sont terminées
+      bool sourcesComplete = true;
+      if (m.sourceMatch1Id != null) {
+        final src = matches.where((x) => x.id == m.sourceMatch1Id).firstOrNull;
+        if (src == null || src.winnerId == null) sourcesComplete = false;
+      }
+      if (m.sourceMatch2Id != null) {
+        final src = matches.where((x) => x.id == m.sourceMatch2Id).firstOrNull;
+        if (src == null || src.winnerId == null) sourcesComplete = false;
+      }
+      if (!sourcesComplete) continue;
+
+      // Une équipe présente, l'autre absente (bye) → victoire par forfait
+      if (m.team1Id.isNotEmpty && m.team2Id.isEmpty) {
+        m.winnerId = m.team1Id;
+        m.score1 = 13;
+        m.score2 = 0;
+        _propagateChampionnatResult(matches, m.id, m.winnerId!, '');
+        changed = true;
+        break;
+      } else if (m.team1Id.isEmpty && m.team2Id.isNotEmpty) {
+        m.winnerId = m.team2Id;
+        m.score1 = 0;
+        m.score2 = 13;
+        _propagateChampionnatResult(matches, m.id, m.winnerId!, '');
+        changed = true;
+        break;
       }
     }
   }

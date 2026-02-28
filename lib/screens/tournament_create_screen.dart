@@ -114,6 +114,11 @@ class _TournamentCreateScreenState extends State<TournamentCreateScreen> {
         pc.dispose();
       }
       _teams.removeAt(index);
+      // Ajuster le nombre de poules si nécessaire
+      final maxPools = _teams.length ~/ 2;
+      if (_poolCount > maxPools && maxPools >= 2) {
+        _poolCount = maxPools;
+      }
     });
   }
 
@@ -132,7 +137,38 @@ class _TournamentCreateScreenState extends State<TournamentCreateScreen> {
     for (final team in _teams) {
       if (team.nameController.text.trim().isEmpty) return false;
     }
-    return true;
+    return _validatePoolConfig() == null;
+  }
+
+  /// Valide la configuration poules/équipes.
+  /// Retourne un message d'erreur ou null si valide.
+  String? _validatePoolConfig() {
+    final nbTeams = _teams.length;
+    final nbPools = _usePools ? _poolCount : 1;
+
+    if (nbPools > nbTeams) {
+      return 'Plus de poules ($nbPools) que d\'équipes ($nbTeams). Réduisez le nombre de poules.';
+    }
+
+    // Vérifier qu'aucune poule n'a moins de 2 équipes
+    final minPerPool = nbTeams ~/ nbPools;
+    if (minPerPool < 2) {
+      final maxPools = nbTeams ~/ 2;
+      return 'Certaines poules n\'auraient qu\'1 équipe. '
+          'Maximum $maxPools poules pour $nbTeams équipes.';
+    }
+
+    // En mode championnat, les poules ne peuvent pas dépasser 4 équipes
+    if (_mode == 'championnat' && nbPools > 1) {
+      final maxPerPool = (nbTeams / nbPools).ceil();
+      if (maxPerPool > 4) {
+        final minPools = (nbTeams / 4).ceil();
+        return 'En championnat, maximum 4 équipes par poule. '
+            'Utilisez au moins $minPools poules pour $nbTeams équipes.';
+      }
+    }
+
+    return null;
   }
 
   String _gameTypeLabel(String type) {
@@ -464,16 +500,16 @@ class _TournamentCreateScreenState extends State<TournamentCreateScreen> {
                         ),
                       ),
                       GestureDetector(
-                        onTap: () => setState(() => _poolCount++),
+                        onTap: _poolCount < 10 ? () => setState(() => _poolCount++) : null,
                         child: Container(
                           width: 36,
                           height: 36,
                           decoration: BoxDecoration(
-                            color: themeColor50,
+                            color: _poolCount < 10 ? themeColor50 : slate50,
                             borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: themeColor600),
+                            border: Border.all(color: _poolCount < 10 ? themeColor600 : slate200),
                           ),
-                          child: Icon(LucideIcons.plus, size: 18, color: themeColor600),
+                          child: Icon(LucideIcons.plus, size: 18, color: _poolCount < 10 ? themeColor600 : slate400),
                         ),
                       ),
                     ],
@@ -584,6 +620,31 @@ class _TournamentCreateScreenState extends State<TournamentCreateScreen> {
                   ),
                 ),
               ),
+
+              // Warning si configuration invalide
+              if (_teams.length >= 3 && _validatePoolConfig() != null) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFEF2F2), // red-50
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFFECACA)), // red-200
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(LucideIcons.alertTriangle, size: 18, color: Color(0xFFDC2626)),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          _validatePoolConfig()!,
+                          style: const TextStyle(fontSize: 12, color: Color(0xFFDC2626), height: 1.4),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
 
               const SizedBox(height: 16),
               _buildNextButton('Suivant', _canGoStep3(), themeColor600, () {
