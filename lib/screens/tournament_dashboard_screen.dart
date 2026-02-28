@@ -1,0 +1,617 @@
+import 'dart:math';
+import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
+import 'package:lucide_icons/lucide_icons.dart';
+
+import 'package:petanque_score/models/tournament.dart';
+import 'package:petanque_score/services/tournament_storage.dart';
+import 'package:petanque_score/utils/tournament_logic.dart';
+import 'package:petanque_score/providers/theme_provider.dart';
+import 'package:petanque_score/utils/colors.dart';
+import 'package:petanque_score/widgets/pool_table.dart';
+import 'package:petanque_score/widgets/pool_match_list.dart';
+import 'package:petanque_score/widgets/bracket_view.dart';
+import 'package:petanque_score/widgets/match_card.dart';
+import 'package:petanque_score/widgets/championnat_pool_bracket.dart';
+import 'package:petanque_score/widgets/tournament_stats.dart';
+
+class TournamentDashboardScreen extends StatefulWidget {
+  final String id;
+  const TournamentDashboardScreen({super.key, required this.id});
+
+  @override
+  State<TournamentDashboardScreen> createState() => _TournamentDashboardScreenState();
+}
+
+class _TournamentDashboardScreenState extends State<TournamentDashboardScreen>
+    with SingleTickerProviderStateMixin {
+  Tournament? _tournament;
+  bool _loading = true;
+  late TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 4, vsync: this);
+    _loadTournament();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadTournament() async {
+    var tournament = await TournamentStorage.loadTournament(widget.id);
+    if (tournament == null || !mounted) {
+      setState(() => _loading = false);
+      return;
+    }
+
+    // Auto-recalculate standings
+    if (tournament.mode == 'championnat') {
+      for (final pool in tournament.pools) {
+        pool.standings = calculateChampionnatStandings(pool);
+        pool.completed = isChampionnatPoolComplete(pool);
+      }
+    } else {
+      final qualifiedPerPool = getQualifiedPerPool(tournament.pools);
+      for (final pool in tournament.pools) {
+        pool.standings = calculatePoolStandings(pool, qualifiedCount: qualifiedPerPool);
+        pool.completed = isPoolComplete(pool);
+      }
+    }
+
+    // Auto-transition: pools -> bracket
+    if (tournament.phase == 'pools' && tournament.pools.every((p) => p.completed)) {
+      // For championnat mode, set qualified flags from match results
+      if (tournament.mode == 'championnat') {
+        for (final pool in tournament.pools) {
+          final qualifiedIds = getChampionnatQualifiedTeamIds(pool);
+          for (final s in pool.standings) {
+            s.qualified = qualifiedIds.contains(s.teamId);
+          }
+        }
+      }
+      if (tournament.bracket.isEmpty) {
+        tournament.bracket = generateBracket(tournament.pools, tournament.hasThirdPlace);
+      } else {
+        tournament.bracket = populateBracketFromPools(tournament.bracket, tournament.pools);
+      }
+      tournament.phase = 'bracket';
+    }
+
+    // Auto-populate bracket if in bracket phase
+    if (tournament.phase == 'bracket' && tournament.bracket.isNotEmpty) {
+      // Check if bracket is complete
+      if (isBracketComplete(tournament.bracket)) {
+        final nonThirdPlace = tournament.bracket.where((b) => !b.isThirdPlace);
+        final maxRound = nonThirdPlace.map((b) => b.round).reduce(max);
+        final finale = nonThirdPlace.where((m) => m.round == maxRound).firstOrNull;
+        if (finale?.winnerId != null) {
+          tournament.winnerId = finale!.winnerId;
+          // Check third place match too
+          final thirdPlace = tournament.bracket.where((m) => m.isThirdPlace).firstOrNull;
+          if (thirdPlace == null || thirdPlace.winnerId != null) {
+            tournament.phase = 'finished';
+          }
+        }
+      }
+    }
+
+    await TournamentStorage.saveTournament(tournament);
+
+    if (!mounted) return;
+    setState(() {
+      _tournament = tournament;
+      _loading = false;
+    });
+  }
+
+  String _phaseLabel(String phase) {
+    switch (phase) {
+      case 'registration':
+        return 'Inscription';
+      case 'pools':
+        return 'Poules';
+      case 'bracket':
+        return 'Bracket';
+      case 'finished':
+        return 'Terminé';
+      default:
+        return phase;
+    }
+  }
+
+  Color _phaseColor(String phase, Color themeColor) {
+    switch (phase) {
+      case 'registration':
+        return const Color(0xFFEA580C);
+      case 'pools':
+        return const Color(0xFF2563EB);
+      case 'bracket':
+        return const Color(0xFF9333EA);
+      case 'finished':
+        return themeColor;
+      default:
+        return slate500;
+    }
+  }
+
+  Color _phaseBgColor(String phase, Color themeColor50) {
+    switch (phase) {
+      case 'registration':
+        return const Color(0xFFFFF7ED);
+      case 'pools':
+        return const Color(0xFFEFF6FF);
+      case 'bracket':
+        return const Color(0xFFFAF5FF);
+      case 'finished':
+        return themeColor50;
+      default:
+        return slate100;
+    }
+  }
+
+  double _progressPercent() {
+    if (_tournament == null) return 0;
+    int played = 0;
+    int total = 0;
+
+    for (final pool in _tournament!.pools) {
+      total += pool.matches.length;
+      played += pool.matches.where((m) => m.score1 != null).length;
+    }
+    total += _tournament!.bracket.length;
+    played += _tournament!.bracket.where((m) => m.score1 != null).length;
+
+    return total == 0 ? 0 : played / total;
+  }
+
+  TournamentTeam? _getTeam(String? teamId) {
+    if (teamId == null || _tournament == null) return null;
+    return _tournament!.teams.where((t) => t.id == teamId).firstOrNull;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = context.watch<ThemeProvider>();
+    final themeColor600 = theme.colors.shade600;
+    final themeColor50 = theme.colors.shade50;
+
+    if (_loading) {
+      return const Scaffold(
+        backgroundColor: slate50,
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_tournament == null) {
+      return Scaffold(
+        backgroundColor: slate50,
+        body: SafeArea(
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(8),
+                child: Row(
+                  children: [
+                    IconButton(
+                      onPressed: () {
+                        if (context.canPop()) {
+                          context.pop();
+                        } else {
+                          context.go('/');
+                        }
+                      },
+                      icon: const Icon(LucideIcons.arrowLeft, size: 22, color: slate800),
+                    ),
+                    const Text('Tournoi introuvable', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: slate800)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final t = _tournament!;
+    final phaseCol = _phaseColor(t.phase, themeColor600);
+    final phaseBg = _phaseBgColor(t.phase, themeColor50);
+    final progress = _progressPercent();
+
+    return PopScope(
+      canPop: true,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) {
+          if (context.canPop()) {
+            context.pop();
+          } else {
+            context.go('/');
+          }
+        }
+      },
+      child: Scaffold(
+        backgroundColor: slate50,
+        body: SafeArea(
+          child: Column(
+            children: [
+              // ── Header ──
+              _buildHeader(t, phaseCol, phaseBg, progress, themeColor600),
+
+              // ── Winner banner ──
+            if (t.phase == 'finished' && t.winnerId != null)
+              _buildWinnerBanner(t, themeColor600),
+
+            // ── Tabs ──
+            Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                border: Border(bottom: BorderSide(color: slate200, width: 1)),
+              ),
+              child: TabBar(
+                controller: _tabController,
+                labelColor: themeColor600,
+                unselectedLabelColor: slate500,
+                indicatorColor: themeColor600,
+                indicatorWeight: 3,
+                labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                unselectedLabelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                tabs: const [
+                  Tab(text: 'Poules'),
+                  Tab(text: 'Bracket'),
+                  Tab(text: 'Matchs'),
+                  Tab(text: 'Stats'),
+                ],
+              ),
+            ),
+
+            // ── Tab content ──
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  _buildPoolsTab(t, themeColor600, themeColor50),
+                  _buildBracketTab(t, themeColor600),
+                  _buildMatchsTab(t, themeColor600),
+                  _buildStatsTab(t),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+      ),
+    );
+  }
+
+  Widget _buildHeader(Tournament t, Color phaseCol, Color phaseBg, double progress, Color themeColor600) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              IconButton(
+                onPressed: () {
+                  if (context.canPop()) {
+                    context.pop();
+                  } else {
+                    context.go('/');
+                  }
+                },
+                icon: const Icon(LucideIcons.arrowLeft, size: 22, color: slate800),
+                tooltip: 'Retour',
+              ),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      t.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: slate800),
+                    ),
+                    if (t.date.isNotEmpty || t.location.isNotEmpty)
+                      Text(
+                        [t.date, if (t.location.isNotEmpty) t.location].join(' — '),
+                        style: const TextStyle(fontSize: 12, color: slate500),
+                      ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(color: phaseBg, borderRadius: BorderRadius.circular(20)),
+                child: Text(
+                  _phaseLabel(t.phase),
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: phaseCol),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          // Progress bar
+          Container(
+            height: 4,
+            decoration: BoxDecoration(
+              color: slate200,
+              borderRadius: BorderRadius.circular(2),
+            ),
+            child: FractionallySizedBox(
+              alignment: Alignment.centerLeft,
+              widthFactor: progress.clamp(0.0, 1.0),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: themeColor600,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWinnerBanner(Tournament t, Color themeColor600) {
+    final winner = _getTeam(t.winnerId);
+    if (winner == null) return const SizedBox.shrink();
+    final winnerColor = parseHex(winner.color);
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [amber500, themeColor600],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: amber500.withValues(alpha: 0.3),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          const Icon(LucideIcons.trophy, size: 32, color: Colors.white),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Vainqueur',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: Colors.white70),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  winner.name,
+                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Colors.white),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            width: 20,
+            height: 20,
+            decoration: BoxDecoration(
+              color: winnerColor,
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 2),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Poules Tab ──
+  Widget _buildPoolsTab(Tournament t, Color themeColor600, Color themeColor50) {
+    if (t.pools.isEmpty) {
+      return const Center(
+        child: Text('Aucune poule', style: TextStyle(fontSize: 16, color: slate400)),
+      );
+    }
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        for (final pool in t.pools) ...[
+          Text(pool.name, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: themeColor600)),
+          const SizedBox(height: 8),
+          if (t.mode == 'championnat')
+            ChampionnatPoolBracket(
+              pool: pool,
+              teams: t.teams,
+              themeColor600: themeColor600,
+              onMatchPress: (matchId) async {
+                await context.push('/tournament/match/$matchId?tournamentId=${t.id}');
+                if (mounted) _loadTournament();
+              },
+            )
+          else ...[
+            PoolTable(pool: pool, teams: t.teams),
+            const SizedBox(height: 12),
+            PoolMatchList(
+              pool: pool,
+              teams: t.teams,
+              onMatchPress: (matchId) async {
+                await context.push('/tournament/match/$matchId?tournamentId=${t.id}');
+                if (mounted) _loadTournament();
+              },
+            ),
+          ],
+          const SizedBox(height: 24),
+        ],
+      ],
+    );
+  }
+
+  // ── Bracket Tab ──
+  Widget _buildBracketTab(Tournament t, Color themeColor600) {
+    final allPoolsComplete = t.pools.every((p) => p.completed);
+
+    if (!allPoolsComplete && t.bracket.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(LucideIcons.gitBranch, size: 48, color: slate200),
+            const SizedBox(height: 12),
+            const Text(
+              'Terminez la phase de poules',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: slate400),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Le bracket sera généré automatiquement',
+              style: TextStyle(fontSize: 13, color: slate400),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      children: [
+        Expanded(
+          child: BracketView(
+            bracket: t.bracket,
+            teams: t.teams,
+            pools: t.pools,
+            isChampionnat: t.mode == 'championnat',
+            onMatchPress: (matchId) async {
+              await context.push('/tournament/match/$matchId?tournamentId=${t.id}');
+              if (mounted) _loadTournament();
+            },
+            onPoolPress: (poolId) {
+              // Switch to Poules tab
+              _tabController.animateTo(0);
+            },
+          ),
+        ),
+        // Full screen button
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: GestureDetector(
+            onTap: () async {
+              await context.push('/tournament/bracket/${t.id}');
+              if (mounted) _loadTournament();
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: slate200),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(LucideIcons.maximize2, size: 18, color: themeColor600),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Voir en plein écran',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: themeColor600),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ── Matchs Tab ──
+  Widget _buildMatchsTab(Tournament t, Color themeColor600) {
+    // Collect all matches
+    final poolMatches = t.pools.expand((p) => p.matches).toList();
+    final bracketMatches = t.bracket;
+
+    final unplayed = <dynamic>[
+      ...poolMatches.where((m) => m.score1 == null && m.team1Id.isNotEmpty && m.team2Id.isNotEmpty),
+      ...bracketMatches.where((m) => m.score1 == null && m.team1Id != null && m.team2Id != null),
+    ];
+
+    final played = <dynamic>[
+      ...poolMatches.where((m) => m.score1 != null && m.team1Id.isNotEmpty && m.team2Id.isNotEmpty),
+      ...bracketMatches.where((m) => m.score1 != null),
+    ];
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        // Unplayed
+        Text(
+          'À jouer (${unplayed.length})',
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: slate800),
+        ),
+        const SizedBox(height: 8),
+        if (unplayed.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 16),
+            child: Center(child: Text('Aucun match à jouer', style: TextStyle(fontSize: 14, color: slate400))),
+          )
+        else
+          for (final match in unplayed) ...[
+            MatchCard(
+              match: match,
+              teams: t.teams,
+              onPress: () async {
+                final matchId = match is PoolMatch ? match.id : (match as BracketMatch).id;
+                await context.push('/tournament/match/$matchId?tournamentId=${t.id}');
+                if (mounted) _loadTournament();
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+
+        const SizedBox(height: 24),
+
+        // Played
+        Text(
+          'Terminés (${played.length})',
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: slate800),
+        ),
+        const SizedBox(height: 8),
+        if (played.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 16),
+            child: Center(child: Text('Aucun match terminé', style: TextStyle(fontSize: 14, color: slate400))),
+          )
+        else
+          for (final match in played) ...[
+            MatchCard(
+              match: match,
+              teams: t.teams,
+              onPress: () async {
+                final matchId = match is PoolMatch ? match.id : (match as BracketMatch).id;
+                await context.push('/tournament/match/$matchId?tournamentId=${t.id}');
+                if (mounted) _loadTournament();
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+      ],
+    );
+  }
+
+  // ── Stats Tab ──
+  Widget _buildStatsTab(Tournament t) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: TournamentStats(tournament: t),
+    );
+  }
+}

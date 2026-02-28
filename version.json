@@ -1,0 +1,5 @@
+{
+  "version": "1.0.0",
+  "apk_url": "https://github.com/TR17-xxx/petanque/releases/download/v1.0.0/app-release.apk",
+  "changelog": "- Version initiale\n- Compteur de points\n- Mode tournoi et championnat\n- Mesure des distances par photo"
+}
