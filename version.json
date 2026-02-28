@@ -1,5 +1,5 @@
 {
-  "version": "1.0.0",
-  "apk_url": "https://github.com/TR17-xxx/petanque/releases/download/v1.0.0/petanque.apk",
-  "changelog": "- Version initiale\n- Compteur de points\n- Mode tournoi et championnat\n- Mesure des distances par photo"
+  "version": "1.1.0",
+  "apk_url": "https://github.com/TR17-xxx/petanque/releases/download/v1.1.0/petanque.apk",
+  "changelog": "- Correction poules de 3 équipes en championnat (matchs bloqués)\n- Validation des configurations poules/équipes à la création\n- Avertissement si configuration invalide\n- Ajustement automatique du nombre de poules"
 }
