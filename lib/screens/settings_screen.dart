@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
@@ -23,11 +24,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _apiKeyController = TextEditingController();
   bool _obscureApiKey = true;
   bool _hasSavedApiKey = false;
+  String _version = '';
 
   @override
   void initState() {
     super.initState();
     _loadApiKey();
+    _loadVersion();
+  }
+
+  Future<void> _loadVersion() async {
+    final info = await PackageInfo.fromPlatform();
+    if (mounted) setState(() => _version = info.version);
   }
 
   @override
@@ -208,10 +216,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     const SizedBox(height: 32),
 
                     // ── Footer ──
-                    const Center(
+                    Center(
                       child: Text(
-                        'Pétanque Score v1.0.0',
-                        style: TextStyle(
+                        'Pétanque Score${_version.isNotEmpty ? ' v$_version' : ''}',
+                        style: const TextStyle(
                           fontSize: 13,
                           color: slate400,
                         ),
@@ -771,9 +779,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               } else {
                 // APK sideloadé: PayPal
                 final url = Uri.parse('https://paypal.me/TR17petanque/2');
-                if (await canLaunchUrl(url)) {
-                  await launchUrl(url, mode: LaunchMode.externalApplication);
-                }
+                await launchUrl(url, mode: LaunchMode.externalApplication);
               }
             },
             child: Container(
