@@ -1,5 +1,5 @@
 {
-  "version": "1.1.0",
-  "apk_url": "https://github.com/TR17-xxx/petanque/releases/download/v1.1.0/petanque.apk",
-  "changelog": "- Correction poules de 3 équipes en championnat (matchs bloqués)\n- Validation des configurations poules/équipes à la création\n- Avertissement si configuration invalide\n- Ajustement automatique du nombre de poules"
+  "version": "1.2.0",
+  "apk_url": "https://github.com/TR17-xxx/petanque/releases/download/v1.2.0/petanque.apk",
+  "changelog": "- Choix du nombre d'équipes par poule (adapte dynamiquement le nombre total d'équipes)\n- Affichage de la version sur le dashboard\n- Tolérance du niveau à bulle réduite (~4° au lieu de ~8-10°)\n- Règles du championnat FFPJP détaillées dans l'aide\n- Correction du bug de mise à jour proposée en boucle"
 }

@@ -37,6 +37,7 @@ class _TournamentCreateScreenState extends State<TournamentCreateScreen> {
   String _mode = 'tournoi'; // tournoi | championnat
   bool _usePools = true; // true = multiple pools, false = single pool
   int _poolCount = 2; // number of pools when _usePools is true
+  int _teamsPerPool = 3; // number of teams per pool
   bool _hasThirdPlace = false;
   int _poolTargetScore = 13;
   int _bracketTargetScore = 13;
@@ -53,14 +54,8 @@ class _TournamentCreateScreenState extends State<TournamentCreateScreen> {
     final now = DateTime.now();
     _dateController.text =
         '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
-    // Initialize with 4 default teams
-    for (var i = 0; i < 4; i++) {
-      _teams.add(_TeamData(
-        nameController: TextEditingController(text: 'Équipe ${i + 1}'),
-        playerControllers: _createPlayerControllers(),
-        color: _teamColors[i % _teamColors.length],
-      ));
-    }
+    // Initialize teams based on pool config
+    _syncTeamsCount();
   }
 
   List<TextEditingController> _createPlayerControllers() {
@@ -95,6 +90,34 @@ class _TournamentCreateScreenState extends State<TournamentCreateScreen> {
     super.dispose();
   }
 
+  /// Calcule le nombre total d'équipes souhaité selon la config poules.
+  int _targetTeamCount() {
+    if (!_usePools) return _teamsPerPool;
+    return _poolCount * _teamsPerPool;
+  }
+
+  /// Synchronise la liste _teams avec le nombre cible.
+  void _syncTeamsCount() {
+    final target = _targetTeamCount();
+    // Ajouter des équipes si nécessaire
+    while (_teams.length < target) {
+      final idx = _teams.length;
+      _teams.add(_TeamData(
+        nameController: TextEditingController(text: 'Équipe ${idx + 1}'),
+        playerControllers: _createPlayerControllers(),
+        color: _teamColors[idx % _teamColors.length],
+      ));
+    }
+    // Retirer des équipes si nécessaire (depuis la fin)
+    while (_teams.length > target) {
+      final removed = _teams.removeLast();
+      removed.nameController.dispose();
+      for (final pc in removed.playerControllers) {
+        pc.dispose();
+      }
+    }
+  }
+
   void _addTeam() {
     setState(() {
       final idx = _teams.length;
@@ -114,11 +137,6 @@ class _TournamentCreateScreenState extends State<TournamentCreateScreen> {
         pc.dispose();
       }
       _teams.removeAt(index);
-      // Ajuster le nombre de poules si nécessaire
-      final maxPools = _teams.length ~/ 2;
-      if (_poolCount > maxPools && maxPools >= 2) {
-        _poolCount = maxPools;
-      }
     });
   }
 
@@ -459,8 +477,8 @@ class _TournamentCreateScreenState extends State<TournamentCreateScreen> {
                           const SizedBox(height: 2),
                           Text(
                             _usePools
-                                ? '$_poolCount poules'
-                                : 'Poule unique (toutes les équipes)',
+                                ? '$_poolCount poules de $_teamsPerPool équipes'
+                                : 'Poule unique de $_teamsPerPool équipes',
                             style: const TextStyle(fontSize: 12, color: slate500),
                           ),
                         ],
@@ -468,8 +486,58 @@ class _TournamentCreateScreenState extends State<TournamentCreateScreen> {
                     ),
                     Switch(
                       value: _usePools,
-                      onChanged: (v) => setState(() => _usePools = v),
+                      onChanged: (v) => setState(() {
+                        _usePools = v;
+                        _syncTeamsCount();
+                      }),
                       activeTrackColor: themeColor600,
+                    ),
+                  ],
+                ),
+                // Équipes par poule (toujours visible)
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    const Text('Équipes par poule', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: slate700)),
+                    const Spacer(),
+                    GestureDetector(
+                      onTap: _teamsPerPool > 2 ? () => setState(() {
+                        _teamsPerPool--;
+                        _syncTeamsCount();
+                      }) : null,
+                      child: Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: _teamsPerPool > 2 ? themeColor50 : slate50,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: _teamsPerPool > 2 ? themeColor600 : slate200),
+                        ),
+                        child: Icon(LucideIcons.minus, size: 18, color: _teamsPerPool > 2 ? themeColor600 : slate400),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Text(
+                        '$_teamsPerPool',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: themeColor600),
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: _teamsPerPool < 30 ? () => setState(() {
+                        _teamsPerPool++;
+                        _syncTeamsCount();
+                      }) : null,
+                      child: Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: _teamsPerPool < 30 ? themeColor50 : slate50,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: _teamsPerPool < 30 ? themeColor600 : slate200),
+                        ),
+                        child: Icon(LucideIcons.plus, size: 18, color: _teamsPerPool < 30 ? themeColor600 : slate400),
+                      ),
                     ),
                   ],
                 ),
@@ -480,7 +548,10 @@ class _TournamentCreateScreenState extends State<TournamentCreateScreen> {
                       const Text('Nombre de poules', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: slate700)),
                       const Spacer(),
                       GestureDetector(
-                        onTap: _poolCount > 2 ? () => setState(() => _poolCount--) : null,
+                        onTap: _poolCount > 2 ? () => setState(() {
+                          _poolCount--;
+                          _syncTeamsCount();
+                        }) : null,
                         child: Container(
                           width: 36,
                           height: 36,
@@ -500,7 +571,10 @@ class _TournamentCreateScreenState extends State<TournamentCreateScreen> {
                         ),
                       ),
                       GestureDetector(
-                        onTap: _poolCount < 10 ? () => setState(() => _poolCount++) : null,
+                        onTap: _poolCount < 10 ? () => setState(() {
+                          _poolCount++;
+                          _syncTeamsCount();
+                        }) : null,
                         child: Container(
                           width: 36,
                           height: 36,
@@ -513,6 +587,12 @@ class _TournamentCreateScreenState extends State<TournamentCreateScreen> {
                         ),
                       ),
                     ],
+                  ),
+                  // Résumé dynamique
+                  const SizedBox(height: 8),
+                  Text(
+                    '${_targetTeamCount()} équipes au total ($_teamsPerPool × $_poolCount)',
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: slate500),
                   ),
                 ],
               ],

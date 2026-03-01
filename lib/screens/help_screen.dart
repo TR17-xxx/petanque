@@ -148,34 +148,97 @@ const _helpSections = <_HelpSection>[
         text:
             'Créez un tournoi en définissant le nom, le type de jeu '
             '(triplette, doublette, tête-à-tête), et en ajoutant les '
-            'équipes participantes.',
+            'équipes participantes. Choisissez le nombre d\'équipes par '
+            'poule et le nombre de poules, les équipes sont créées '
+            'automatiquement.',
       ),
       _HelpItem(
-        subtitle: 'Phase de poules',
+        subtitle: 'Phase de poules (round-robin)',
         text:
-            'Les équipes sont réparties en poules. Chaque équipe affronte '
-            'les autres équipes de sa poule. Les meilleures équipes sont '
+            'Chaque équipe affronte toutes les autres équipes de sa poule. '
+            'Les matchs se jouent en 13 points. À la fin de la phase de '
+            'poules, les 2 meilleures équipes de chaque poule sont '
             'qualifiées pour la phase éliminatoire.',
       ),
       _HelpItem(
         subtitle: 'Phase éliminatoire',
         text:
             'Les équipes qualifiées s\'affrontent en matchs à élimination '
-            'directe (quarts, demis, finale). Un match pour la 3e place '
-            'peut être activé.',
+            'directe. Le 1er d\'une poule affronte le 2ème d\'une autre '
+            'poule (croisement). Les matchs se jouent en quarts de finale, '
+            'demi-finales puis finale. Un match pour la 3ème place peut '
+            'être activé à la création.',
       ),
       _HelpItem(
-        subtitle: 'Classement',
+        subtitle: 'Classement des poules',
         text:
-            'Le classement des poules prend en compte : les victoires, '
-            'la différence de points, puis les points marqués en cas '
-            'd\'égalité.',
+            'Le classement prend en compte dans l\'ordre : le nombre de '
+            'victoires, la différence de points (marqués - encaissés), '
+            'puis le total de points marqués en cas d\'égalité.',
       ),
       _HelpItem(
         subtitle: 'Tournoi actif',
         text:
-            'Un seul tournoi peut être actif à la fois. Le tournoi actif '
-            'est accessible rapidement depuis l\'écran d\'accueil.',
+            'Un seul tournoi peut être actif à la fois. Il est accessible '
+            'directement depuis l\'écran d\'accueil. Appui long sur la '
+            'bannière pour le supprimer.',
+      ),
+    ],
+  ),
+  _HelpSection(
+    icon: LucideIcons.award,
+    title: 'Championnat (FFPJP)',
+    items: [
+      _HelpItem(
+        subtitle: 'Principe',
+        text:
+            'Le championnat utilise le format éliminatoire de la FFPJP '
+            '(Fédération Française de Pétanque et Jeu Provençal). '
+            'Contrairement au tournoi classique où toutes les équipes '
+            'd\'une poule se rencontrent, le championnat fonctionne avec '
+            'un système de matchs gagnants/perdants à l\'intérieur de '
+            'chaque poule.',
+      ),
+      _HelpItem(
+        subtitle: 'Tour 1 — Matchs initiaux',
+        text:
+            'Les équipes de chaque poule sont appairées pour les matchs '
+            'initiaux. Dans une poule de 4 : Équipe 1 vs Équipe 2 et '
+            'Équipe 3 vs Équipe 4. Dans une poule de 3 : Équipe 1 vs '
+            'Équipe 2 et l\'Équipe 3 est exemptée (bye automatique, '
+            'elle passe directement au tour suivant côté gagnants).',
+      ),
+      _HelpItem(
+        subtitle: 'Tour 2 — Gagnants et Perdants',
+        text:
+            'Les gagnants du Tour 1 s\'affrontent entre eux (match des '
+            'Gagnants). Les perdants du Tour 1 s\'affrontent entre eux '
+            '(match des Perdants). Le perdant du match des Perdants est '
+            'éliminé de la poule (classé dernier).',
+      ),
+      _HelpItem(
+        subtitle: 'Tour 3 — Barrage',
+        text:
+            'Le perdant du match des Gagnants affronte le gagnant du '
+            'match des Perdants dans un match de barrage. Le gagnant du '
+            'barrage se qualifie (2ème de la poule). Le perdant du '
+            'barrage est éliminé (3ème de la poule).',
+      ),
+      _HelpItem(
+        subtitle: 'Qualification',
+        text:
+            '2 équipes se qualifient par poule : le gagnant du match des '
+            'Gagnants (1er) et le gagnant du Barrage (2ème). Ces équipes '
+            'passent ensuite en phase éliminatoire (quarts, demis, '
+            'finale) comme dans un tournoi classique.',
+      ),
+      _HelpItem(
+        subtitle: 'Score cible',
+        text:
+            'Le championnat permet de définir un score cible différent '
+            'pour les poules et pour le bracket. Par défaut : 11 points '
+            'en poules et 13 points en phase éliminatoire. Ces valeurs '
+            'sont ajustables à la création.',
       ),
     ],
   ),

@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 
-const double _tolerance = 0.15; // ~8-10° tolerance
+const double _tolerance = 0.07; // ~4° tolerance
 
 class LevelIndicator extends StatefulWidget {
   final ValueChanged<bool>? onLevelChange;

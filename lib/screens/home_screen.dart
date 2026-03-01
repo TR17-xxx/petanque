@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
@@ -25,6 +26,7 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Game> _activeGames = [];
   List<Game> _history = [];
   Tournament? _activeTournament;
+  String _version = '';
 
   // Selection mode
   bool _selectionMode = false;
@@ -34,7 +36,13 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadData();
+    _loadVersion();
     _checkForUpdate();
+  }
+
+  Future<void> _loadVersion() async {
+    final info = await PackageInfo.fromPlatform();
+    if (mounted) setState(() => _version = info.version);
   }
 
   /// Vérifie si une mise à jour est disponible (silencieux en cas d'erreur).
@@ -348,14 +356,28 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           Icon(LucideIcons.target, size: 28, color: themeColor600),
           const SizedBox(width: 10),
-          const Expanded(
-            child: Text(
-              'Pétanque Score',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.w800,
-                color: slate800,
-              ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Pétanque Score',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w800,
+                    color: slate800,
+                  ),
+                ),
+                if (_version.isNotEmpty)
+                  Text(
+                    'v$_version',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      color: slate400,
+                    ),
+                  ),
+              ],
             ),
           ),
           IconButton(
