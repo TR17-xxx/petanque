@@ -245,7 +245,8 @@ const _helpSections = <_HelpSection>[
 ];
 
 class HelpScreen extends StatefulWidget {
-  const HelpScreen({super.key});
+  final String? initialSection;
+  const HelpScreen({super.key, this.initialSection});
 
   @override
   State<HelpScreen> createState() => _HelpScreenState();
@@ -253,7 +254,21 @@ class HelpScreen extends StatefulWidget {
 
 class _HelpScreenState extends State<HelpScreen> {
   // Track which sections are expanded
-  final Set<int> _expandedSections = {};
+  late final Set<int> _expandedSections;
+
+  @override
+  void initState() {
+    super.initState();
+    _expandedSections = {};
+    if (widget.initialSection != null) {
+      for (var i = 0; i < _helpSections.length; i++) {
+        if (_helpSections[i].title == widget.initialSection) {
+          _expandedSections.add(i);
+          break;
+        }
+      }
+    }
+  }
 
   void _toggleSection(int index) {
     setState(() {

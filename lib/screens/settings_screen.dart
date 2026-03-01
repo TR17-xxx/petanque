@@ -3,9 +3,14 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
+import 'package:url_launcher/url_launcher.dart';
+
+import 'package:petanque_score/providers/purchase_provider.dart';
+import 'package:petanque_score/utils/app_config.dart';
 import 'package:petanque_score/providers/theme_provider.dart';
 import 'package:petanque_score/services/secure_storage_service.dart';
 import 'package:petanque_score/utils/colors.dart';
+import 'package:petanque_score/widgets/upgrade_dialog.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -172,6 +177,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   children: [
                     const SizedBox(height: 8),
 
+                    // ── Version Pro ──
+                    _buildProSection(themeColor600),
+
+                    const SizedBox(height: 20),
+
                     // ── Aide & Règles du jeu ──
                     _buildHelpCard(themeColor600),
 
@@ -179,6 +189,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                     // ── Couleur de l'application ──
                     _buildThemeSection(theme, themeColor600, themeColor200),
+
+                    const SizedBox(height: 20),
+
+                    // ── Offrir un pastis ──
+                    _buildDonationSection(),
 
                     const SizedBox(height: 20),
 
@@ -272,13 +287,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Couleur de l\'application',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              color: slate800,
-            ),
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Couleur de l\'application',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: slate800,
+                  ),
+                ),
+              ),
+              if (!context.watch<PurchaseProvider>().isPro)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF7ED),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Text(
+                    'PRO',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFFF59E0B),
+                    ),
+                  ),
+                ),
+            ],
           ),
           const SizedBox(height: 16),
           GridView.builder(
@@ -297,8 +334,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
               final label = themeLabels[key]!;
               final isSelected = theme.themeKey == key;
 
+              final isPro = context.watch<PurchaseProvider>().isPro;
+              final isLocked = !isPro && key != ThemeKey.emerald;
+
               return GestureDetector(
-                onTap: () => theme.setTheme(key),
+                onTap: () {
+                  if (isLocked) {
+                    showUpgradeDialog(context);
+                    return;
+                  }
+                  theme.setTheme(key);
+                },
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
                   decoration: BoxDecoration(
@@ -309,27 +355,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       width: isSelected ? 2 : 1,
                     ),
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                  child: Stack(
                     children: [
-                      Container(
-                        width: 20,
-                        height: 20,
-                        decoration: BoxDecoration(
-                          color: palette.shade600,
-                          shape: BoxShape.circle,
+                      Center(
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Container(
+                              width: 20,
+                              height: 20,
+                              decoration: BoxDecoration(
+                                color: palette.shade600,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              label,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight:
+                                    isSelected ? FontWeight.w700 : FontWeight.w500,
+                                color: isLocked ? slate400 : (isSelected ? palette.shade700 : slate700),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      Text(
-                        label,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight:
-                              isSelected ? FontWeight.w700 : FontWeight.w500,
-                          color: isSelected ? palette.shade700 : slate700,
+                      if (isLocked)
+                        const Positioned(
+                          top: 4,
+                          right: 4,
+                          child: Icon(LucideIcons.lock, size: 10, color: slate400),
                         ),
-                      ),
                     ],
                   ),
                 ),
@@ -482,6 +540,265 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ],
             ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProSection(Color themeColor600) {
+    final purchase = context.watch<PurchaseProvider>();
+
+    if (purchase.isPro) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF0FDF4),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFBBF7D0)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFDCFCE7),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(LucideIcons.crown, size: 22, color: Color(0xFF16A34A)),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Version Pro',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF16A34A),
+                    ),
+                  ),
+                  Text(
+                    purchase.isPlayStoreAvailable
+                        ? 'Toutes les fonctionnalites sont debloquees.'
+                        : 'Debloquee (installation directe).',
+                    style: const TextStyle(fontSize: 12, color: Color(0xFF15803D)),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final price = purchase.proProduct?.price ?? '2,00\u00a0\u20ac';
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 12,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF7ED),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(LucideIcons.crown, size: 22, color: Color(0xFFF59E0B)),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'Passer en Pro',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: slate800,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF0FDF4),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  price,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF16A34A),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              const Icon(LucideIcons.trophy, size: 16, color: Color(0xFFF59E0B)),
+              const SizedBox(width: 8),
+              const Text('Tournois & Championnats',
+                  style: TextStyle(fontSize: 13, color: slate500)),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              const Icon(LucideIcons.palette, size: 16, color: Color(0xFFF59E0B)),
+              const SizedBox(width: 8),
+              const Text('Themes personnalises',
+                  style: TextStyle(fontSize: 13, color: slate500)),
+            ],
+          ),
+          const SizedBox(height: 16),
+          GestureDetector(
+            onTap: () => purchase.buyPro(),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF59E0B),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(LucideIcons.crown, size: 18, color: Colors.white),
+                  SizedBox(width: 8),
+                  Text(
+                    'Debloquer la version Pro',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          GestureDetector(
+            onTap: () => purchase.restore(),
+            child: const Center(
+              child: Text(
+                'Restaurer les achats',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: slate400,
+                  decoration: TextDecoration.underline,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDonationSection() {
+    final purchase = context.watch<PurchaseProvider>();
+    final price = purchase.pastisProduct?.price ?? '2,00\u00a0\u20ac';
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 12,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF7ED),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(LucideIcons.beer, size: 22, color: Color(0xFFF59E0B)),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'Offrir un pastis',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: slate800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Soutenez le developpement de l\'application !',
+            style: TextStyle(fontSize: 13, color: slate500),
+          ),
+          const SizedBox(height: 16),
+          GestureDetector(
+            onTap: () async {
+              if (AppConfig.isPlayStore) {
+                // Play Store: Google Play Billing
+                await purchase.buyPastis();
+                if (mounted) await showPastisThanksDialog(context);
+              } else {
+                // APK sideloadé: PayPal
+                final url = Uri.parse('https://paypal.me/TR17petanque/2');
+                if (await canLaunchUrl(url)) {
+                  await launchUrl(url, mode: LaunchMode.externalApplication);
+                }
+              }
+            },
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF59E0B),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(LucideIcons.beer, size: 18, color: Colors.white),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Offrir un pastis (${AppConfig.isPlayStore ? price : '2,00\u00a0\u20ac'})',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ],
       ),

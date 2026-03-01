@@ -12,11 +12,13 @@ class UpdateInfo {
   final String version;
   final String apkUrl;
   final String changelog;
+  final bool forceUninstall;
 
   const UpdateInfo({
     required this.version,
     required this.apkUrl,
     required this.changelog,
+    this.forceUninstall = false,
   });
 
   factory UpdateInfo.fromJson(Map<String, dynamic> json) {
@@ -24,6 +26,7 @@ class UpdateInfo {
       version: json['version'] as String? ?? '',
       apkUrl: json['apk_url'] as String? ?? '',
       changelog: json['changelog'] as String? ?? '',
+      forceUninstall: json['force_uninstall'] as bool? ?? false,
     );
   }
 }

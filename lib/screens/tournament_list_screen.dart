@@ -573,96 +573,34 @@ class _TournamentListScreenState extends State<TournamentListScreen> {
     );
   }
 
-  bool _rulesExpanded = false;
-
   Widget _buildRulesCard(Color themeColor600) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: slate200),
-        ),
-        child: Column(
-          children: [
-            GestureDetector(
-              onTap: () => setState(() => _rulesExpanded = !_rulesExpanded),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                child: Row(
-                  children: [
-                    Icon(LucideIcons.info, size: 18, color: themeColor600),
-                    const SizedBox(width: 10),
-                    const Expanded(
-                      child: Text(
-                        'Règles du championnat',
-                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: slate800),
-                      ),
-                    ),
-                    AnimatedRotation(
-                      turns: _rulesExpanded ? 0.5 : 0,
-                      duration: const Duration(milliseconds: 200),
-                      child: const Icon(LucideIcons.chevronDown, size: 18, color: slate400),
-                    ),
-                  ],
+      child: GestureDetector(
+        onTap: () => context.push('/help?section=Championnat (FFPJP)'),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: slate200),
+          ),
+          child: Row(
+            children: [
+              Icon(LucideIcons.info, size: 18, color: themeColor600),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'Règles Championnat (FFPJP)',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: slate800),
                 ),
               ),
-            ),
-            AnimatedCrossFade(
-              firstChild: const SizedBox.shrink(),
-              secondChild: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Divider(height: 1, color: slate200),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'Format FFPJP :',
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: slate700),
-                    ),
-                    const SizedBox(height: 8),
-                    _ruleLine('Tour 1 : matchs initiaux dans chaque poule'),
-                    _ruleLine('Tour 2 : les gagnants s\'affrontent, les perdants s\'affrontent'),
-                    _ruleLine('Barrage : perdant du match gagnants vs gagnant du match perdants'),
-                    _ruleLine('Les 2 qualifiés de chaque poule passent en phase finale (bracket)'),
-                    const SizedBox(height: 10),
-                    const Text(
-                      'Score par défaut : 11 pts en poules, 13 pts en bracket',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: slate500),
-                    ),
-                  ],
-                ),
-              ),
-              crossFadeState: _rulesExpanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
-              duration: const Duration(milliseconds: 200),
-            ),
-          ],
+              const Icon(LucideIcons.chevronRight, size: 18, color: slate400),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _ruleLine(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Padding(
-            padding: EdgeInsets.only(top: 6),
-            child: Icon(LucideIcons.chevronRight, size: 12, color: slate400),
-          ),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text(
-              text,
-              style: const TextStyle(fontSize: 13, color: slate500),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }

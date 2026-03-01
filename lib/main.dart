@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 
+import 'providers/purchase_provider.dart';
 import 'providers/theme_provider.dart';
 import 'screens/home_screen.dart';
 import 'screens/setup_screen.dart';
@@ -27,8 +28,11 @@ void main() {
     ),
   );
   runApp(
-    ChangeNotifierProvider(
-      create: (_) => ThemeProvider(),
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        ChangeNotifierProvider(create: (_) => PurchaseProvider()),
+      ],
       child: const PetanqueApp(),
     ),
   );
@@ -56,7 +60,12 @@ final _router = GoRouter(
       ),
     ),
     GoRoute(path: '/settings', builder: (_, __) => const SettingsScreen()),
-    GoRoute(path: '/help', builder: (_, __) => const HelpScreen()),
+    GoRoute(
+      path: '/help',
+      builder: (_, state) => HelpScreen(
+        initialSection: state.uri.queryParameters['section'],
+      ),
+    ),
     GoRoute(path: '/tournament', builder: (_, __) => const TournamentListScreen(modeFilter: 'tournoi')),
     GoRoute(path: '/championnat', builder: (_, __) => const TournamentListScreen(modeFilter: 'championnat')),
     GoRoute(

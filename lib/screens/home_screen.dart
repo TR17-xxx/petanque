@@ -7,12 +7,15 @@ import 'package:lucide_icons/lucide_icons.dart';
 
 import 'package:petanque_score/models/game.dart';
 import 'package:petanque_score/models/tournament.dart';
+import 'package:petanque_score/providers/purchase_provider.dart';
 import 'package:petanque_score/providers/theme_provider.dart';
 import 'package:petanque_score/services/storage_service.dart';
 import 'package:petanque_score/services/tournament_storage.dart';
 import 'package:petanque_score/services/update_service.dart';
 import 'package:petanque_score/widgets/match_history_card.dart';
 import 'package:petanque_score/widgets/update_dialog.dart';
+import 'package:petanque_score/widgets/upgrade_dialog.dart';
+import 'package:petanque_score/utils/app_config.dart';
 import 'package:petanque_score/utils/colors.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -46,7 +49,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   /// Vérifie si une mise à jour est disponible (silencieux en cas d'erreur).
+  /// Désactivé sur le build Play Store (mises à jour via le Store).
   Future<void> _checkForUpdate() async {
+    if (AppConfig.isPlayStore) return;
+
     final info = await UpdateService.checkForUpdate();
     if (info == null || !mounted) return;
 
@@ -464,6 +470,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildActionButtons(Color themeColor600) {
+    final isPro = context.watch<PurchaseProvider>().isPro;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
@@ -485,7 +493,12 @@ class _HomeScreenState extends State<HomeScreen> {
               icon: LucideIcons.trophy,
               label: 'Tournois',
               color: slate800,
+              locked: !isPro,
               onTap: () async {
+                if (!isPro) {
+                  await showUpgradeDialog(context);
+                  return;
+                }
                 await context.push('/tournament');
                 if (mounted) _loadData();
               },
@@ -497,7 +510,12 @@ class _HomeScreenState extends State<HomeScreen> {
               icon: LucideIcons.award,
               label: 'Champ.',
               color: const Color(0xFF7C3AED),
+              locked: !isPro,
               onTap: () async {
+                if (!isPro) {
+                  await showUpgradeDialog(context);
+                  return;
+                }
                 await context.push('/championnat');
                 if (mounted) _loadData();
               },
@@ -513,40 +531,58 @@ class _HomeScreenState extends State<HomeScreen> {
     required String label,
     required Color color,
     required VoidCallback onTap,
+    bool locked = false,
   }) {
     return GestureDetector(
       onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: color.withValues(alpha: 0.3),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 20, color: Colors.white),
-            const SizedBox(width: 8),
-            Flexible(
-              child: Text(
-                label,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white,
+      child: Stack(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: color.withValues(alpha: 0.3),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
                 ),
+              ],
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, size: 20, color: Colors.white),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    label,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (locked)
+            Positioned(
+              top: 4,
+              right: 4,
+              child: Container(
+                padding: const EdgeInsets.all(3),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.9),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(LucideIcons.lock, size: 12, color: slate500),
               ),
             ),
-          ],
-        ),
+        ],
       ),
     );
   }

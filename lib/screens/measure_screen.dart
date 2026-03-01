@@ -13,7 +13,6 @@ import 'package:petanque_score/services/secure_storage_service.dart';
 import 'package:petanque_score/services/distance_service.dart';
 import 'package:petanque_score/services/ai_measure_service.dart';
 import 'package:petanque_score/widgets/camera_level_view.dart';
-import 'package:petanque_score/widgets/ball_positioner.dart';
 import 'package:petanque_score/widgets/ball_editor.dart';
 import 'package:petanque_score/widgets/distance_overlay.dart';
 import 'package:petanque_score/widgets/distance_results.dart';
@@ -125,10 +124,10 @@ class _MeasureScreenState extends State<MeasureScreen> {
     }
   }
 
-  void _handleCochonnetValidate(Marker cochonnet) {
+  void _handleCochonnetAdded(Marker cochonnet) {
+    // Replace any existing cochonnet
     setState(() {
       _markers = _markers.where((m) => m.type != 'cochonnet').toList()..add(cochonnet);
-      _step = _Step.placeBoules;
     });
   }
 
@@ -347,15 +346,102 @@ class _MeasureScreenState extends State<MeasureScreen> {
   // PLACE COCHONNET STEP
   // ════════════════════════════════════════════════
   Widget _buildPlaceCochonnetStep() {
+    final hasCochonnet = _markers.any((m) => m.type == 'cochonnet');
+    const cochonnetColor = Color(0xFF84CC16);
+
     return Scaffold(
       backgroundColor: slate900,
       body: SafeArea(
-        child: BallPositioner(
-          photoUri: _photoUri!,
-          markerType: 'cochonnet',
-          instructionText: 'Positionnez le cercle sur le cochonnet',
-          onValidate: _handleCochonnetValidate,
-          onBack: () => setState(() => _step = _Step.capture),
+        child: Stack(
+          children: [
+            Column(
+              children: [
+                // Instruction
+                Container(
+                  width: double.infinity,
+                  color: Colors.black.withValues(alpha: 0.6),
+                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                  child: const Text(
+                    'Touchez la photo pour placer le cochonnet',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
+                  ),
+                ),
+                // Photo with tap-to-place cochonnet
+                Expanded(
+                  child: _BoulesPhotoView(
+                    photoUri: _photoUri!,
+                    markers: _markers,
+                    activeTeam: 'cochonnet',
+                    onAddBoule: _handleCochonnetAdded,
+                    onEditMarker: _handleEditMarker,
+                    onMoveMarker: _handleUpdateMarker,
+                  ),
+                ),
+                // Bottom bar
+                Container(
+                  color: const Color(0xFF1E293B),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: SizedBox(
+                          height: 48,
+                          child: ElevatedButton(
+                            onPressed: () => setState(() => _step = _Step.capture),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF334155),
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              elevation: 0,
+                            ),
+                            child: const Text('Retour',
+                                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        flex: 2,
+                        child: SizedBox(
+                          height: 48,
+                          child: ElevatedButton(
+                            onPressed: hasCochonnet
+                                ? () => setState(() => _step = _Step.placeBoules)
+                                : null,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: hasCochonnet ? cochonnetColor : const Color(0xFF475569),
+                              foregroundColor: Colors.white,
+                              disabledBackgroundColor: const Color(0xFF475569).withValues(alpha: 0.5),
+                              disabledForegroundColor: Colors.white.withValues(alpha: 0.5),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              elevation: 0,
+                            ),
+                            child: const Text('Valider',
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            // BallEditor overlay (same as boules step)
+            if (_editingMarker != null)
+              Container(
+                color: Colors.black.withValues(alpha: 0.7),
+                child: BallEditor(
+                  photoUri: _photoUri!,
+                  marker: _editingMarker!,
+                  imageWidth: _imgWidth,
+                  imageHeight: _imgHeight,
+                  onUpdate: _handleUpdateMarker,
+                  onDelete: _handleDeleteMarker,
+                  onCancel: () => setState(() => _editingMarker = null),
+                ),
+              ),
+          ],
         ),
       ),
     );
@@ -752,10 +838,16 @@ class _BoulesPhotoViewState extends State<_BoulesPhotoView> {
     }
   }
 
-  Offset? _tapToRelative(Offset local) {
+  /// Converts a local position (in the child's coordinate space) to
+  /// relative image coordinates (0-1). When the GestureDetector is inside
+  /// the InteractiveViewer, coordinates are already un-transformed.
+  Offset? _tapToRelative(Offset local, {bool applyInverseTransform = false}) {
     if (_containerSize == Size.zero) return null;
-    final inv = Matrix4.inverted(_tc.value);
-    final pt = MatrixUtils.transformPoint(inv, local);
+    Offset pt = local;
+    if (applyInverseTransform) {
+      final inv = Matrix4.inverted(_tc.value);
+      pt = MatrixUtils.transformPoint(inv, local);
+    }
     final ds = _getDisplayedImageSize();
     final ox = (_containerSize.width - ds.width) / 2;
     final oy = (_containerSize.height - ds.height) / 2;
@@ -777,6 +869,7 @@ class _BoulesPhotoViewState extends State<_BoulesPhotoView> {
   }
 
   void _onTapUp(TapUpDetails details) {
+    // Inside InteractiveViewer → coordinates already un-transformed
     final rel = _tapToRelative(details.localPosition);
     if (rel == null) return;
 
@@ -835,17 +928,19 @@ class _BoulesPhotoViewState extends State<_BoulesPhotoView> {
 
         return Stack(
           children: [
-            // Photo + markers — always takes the full space
-            GestureDetector(
-              onTapUp: _onTapUp,
-              onLongPressStart: _onLongPressStart,
-              onLongPressMoveUpdate: _onLongPressMoveUpdate,
-              onLongPressEnd: _onLongPressEnd,
-              child: InteractiveViewer(
-                transformationController: _tc,
-                minScale: 1.0,
-                maxScale: 8.0,
-                boundaryMargin: const EdgeInsets.all(double.infinity),
+            // InteractiveViewer handles zoom/pan,
+            // GestureDetector inside handles tap/longpress without arena conflict
+            InteractiveViewer(
+              transformationController: _tc,
+              minScale: 1.0,
+              maxScale: 8.0,
+              boundaryMargin: const EdgeInsets.all(double.infinity),
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTapUp: _onTapUp,
+                onLongPressStart: _onLongPressStart,
+                onLongPressMoveUpdate: _onLongPressMoveUpdate,
+                onLongPressEnd: _onLongPressEnd,
                 child: SizedBox(
                   width: _containerSize.width,
                   height: _containerSize.height,

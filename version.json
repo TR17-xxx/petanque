@@ -1,5 +1,6 @@
 {
-  "version": "1.2.1",
-  "apk_url": "https://github.com/TR17-xxx/petanque/releases/download/v1.2.1/petanque.apk",
-  "changelog": "- Correction du téléchargement des mises à jour (redirections GitHub)\n- Timeout étendu pour les connexions lentes"
+  "version": "1.3.0",
+  "apk_url": "https://github.com/TR17-xxx/petanque/releases/download/v1.3.0/petanque.apk",
+  "changelog": "⚠️ IMPORTANT : Désinstallez l'ancienne version avant d'installer celle-ci (changement de clé de signature)\n\n- Version Pro : tournois et thèmes premium\n- Offrir un pastis : don de soutien via PayPal\n- Cochonnet : éditeur amélioré avec zoom\n- Règles championnat : lien direct vers l'aide\n- Corrections diverses",
+  "force_uninstall": true
 }
