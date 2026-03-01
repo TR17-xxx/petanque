@@ -83,15 +83,24 @@ class UpdateService {
       await oldFile.delete();
     }
 
-    final dio = Dio();
+    final dio = Dio(BaseOptions(
+      followRedirects: true,
+      maxRedirects: 5,
+      headers: {
+        'Accept': 'application/octet-stream',
+        'User-Agent': 'PetanqueScore-App',
+      },
+    ));
     await dio.download(
       url,
       filePath,
       cancelToken: cancelToken,
       onReceiveProgress: onProgress,
       options: Options(
-        receiveTimeout: const Duration(minutes: 5),
+        receiveTimeout: const Duration(minutes: 10),
         sendTimeout: const Duration(seconds: 30),
+        followRedirects: true,
+        maxRedirects: 5,
       ),
     );
 
