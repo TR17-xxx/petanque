@@ -8,13 +8,21 @@ import 'package:petanque_score/models/tournament.dart';
 import 'package:petanque_score/services/tournament_storage.dart';
 import 'package:petanque_score/utils/tournament_logic.dart';
 import 'package:petanque_score/providers/theme_provider.dart';
+import 'package:petanque_score/providers/purchase_provider.dart';
+import 'package:petanque_score/services/firebase_tournament_service.dart';
 import 'package:petanque_score/utils/colors.dart';
 import 'package:petanque_score/widgets/pool_table.dart';
+import 'package:petanque_score/widgets/share_code_dialog.dart';
+import 'package:petanque_score/widgets/live_badge.dart';
 import 'package:petanque_score/widgets/pool_match_list.dart';
 import 'package:petanque_score/widgets/bracket_view.dart';
 import 'package:petanque_score/widgets/match_card.dart';
 import 'package:petanque_score/widgets/championnat_pool_bracket.dart';
 import 'package:petanque_score/widgets/tournament_stats.dart';
+import 'package:petanque_score/widgets/registration_list.dart';
+import 'package:petanque_score/models/registration.dart';
+import 'package:petanque_score/utils/tournament_logic.dart' show generatePools, generateChampionnatPools;
+import 'package:petanque_score/utils/helpers.dart';
 
 class TournamentDashboardScreen extends StatefulWidget {
   final String id;
@@ -103,11 +111,59 @@ class _TournamentDashboardScreenState extends State<TournamentDashboardScreen>
 
     await TournamentStorage.saveTournament(tournament);
 
+    // Push to Firestore if shared
+    if (tournament.isShared) {
+      FirebaseTournamentService.pushTournamentUpdate(tournament).catchError((_) {});
+    }
+
     if (!mounted) return;
     setState(() {
       _tournament = tournament;
       _loading = false;
     });
+  }
+
+  Future<void> _toggleSharing(Tournament t) async {
+    if (t.isShared) {
+      _showShareCodeDialog(t);
+    } else {
+      try {
+        await FirebaseTournamentService.shareTournament(t);
+        await TournamentStorage.saveTournament(t);
+        if (mounted) {
+          setState(() {});
+          _showShareCodeDialog(t);
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Erreur de partage : $e')),
+          );
+        }
+      }
+    }
+  }
+
+  void _showShareCodeDialog(Tournament t) {
+    showDialog(
+      context: context,
+      builder: (ctx) => ShareCodeDialog(
+        shareCode: t.shareCode!,
+        onStopSharing: () async {
+          try {
+            await FirebaseTournamentService.stopSharing(t);
+            await TournamentStorage.saveTournament(t);
+            if (mounted) setState(() {});
+          } catch (e) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Erreur : $e')),
+              );
+            }
+          }
+        },
+      ),
+    );
   }
 
   String _phaseLabel(String phase) {
@@ -246,6 +302,10 @@ class _TournamentDashboardScreenState extends State<TournamentDashboardScreen>
             if (t.phase == 'finished' && t.winnerId != null)
               _buildWinnerBanner(t, themeColor600),
 
+            // ── Registration phase ──
+            if (t.phase == 'registration')
+              Expanded(child: _buildRegistrationPhase(t, themeColor600, themeColor50))
+            else ...[
             // ── Tabs ──
             Container(
               decoration: const BoxDecoration(
@@ -281,11 +341,220 @@ class _TournamentDashboardScreenState extends State<TournamentDashboardScreen>
                 ],
               ),
             ),
+            ],
           ],
         ),
       ),
       ),
     );
+  }
+
+  // ── Registration Phase (organizer view) ──
+  Widget _buildRegistrationPhase(Tournament t, Color themeColor600, Color themeColor50) {
+    return StreamBuilder<List<Registration>>(
+      stream: FirebaseTournamentService.streamRegistrations(t.id),
+      builder: (context, snapshot) {
+        final registrations = snapshot.data ?? [];
+        final approved = registrations.where((r) => r.status == 'approved').toList();
+        final pending = registrations.where((r) => r.status == 'pending').toList();
+
+        return Column(
+          children: [
+            // Share code banner
+            if (t.shareCode != null)
+              Container(
+                margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: themeColor50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: themeColor600.withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(LucideIcons.qrCode, size: 20, color: themeColor600),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Code de partage', style: TextStyle(fontSize: 12, color: slate500)),
+                          Text(
+                            t.shareCode!,
+                            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: themeColor600, letterSpacing: 2),
+                          ),
+                        ],
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: () => _showShareCodeDialog(t),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: slate200),
+                        ),
+                        child: Icon(LucideIcons.share2, size: 18, color: themeColor600),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+            // Counter
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Icon(LucideIcons.users, size: 20, color: themeColor600),
+                  const SizedBox(width: 8),
+                  Text(
+                    '${approved.length + t.teams.length} inscrits',
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: slate800),
+                  ),
+                  if (t.maxTeams != null) ...[
+                    Text(
+                      ' / ${t.maxTeams}',
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: slate500),
+                    ),
+                  ],
+                  if (pending.isNotEmpty) ...[
+                    const SizedBox(width: 12),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFFBEB),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        '${pending.length} en attente',
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFFF59E0B)),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+
+            // Registration list
+            Expanded(
+              child: RegistrationList(
+                registrations: registrations,
+                isManualApproval: !t.autoApprove,
+                themeColor600: themeColor600,
+                onApprove: (regId) async {
+                  await FirebaseTournamentService.approveRegistration(regId);
+                },
+                onReject: (regId) async {
+                  await FirebaseTournamentService.rejectRegistration(regId);
+                },
+                onDelete: (regId) async {
+                  await FirebaseTournamentService.deleteRegistration(regId);
+                },
+              ),
+            ),
+
+            // Launch button
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: GestureDetector(
+                onTap: (approved.length + t.teams.length) >= 3
+                    ? () => _closeRegistrationAndLaunch(t, approved)
+                    : null,
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  decoration: BoxDecoration(
+                    color: (approved.length + t.teams.length) >= 3 ? themeColor600 : slate200,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: (approved.length + t.teams.length) >= 3
+                        ? [
+                            BoxShadow(
+                              color: themeColor600.withValues(alpha: 0.3),
+                              blurRadius: 12,
+                              offset: const Offset(0, 4),
+                            ),
+                          ]
+                        : null,
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(LucideIcons.rocket, size: 20,
+                          color: (approved.length + t.teams.length) >= 3 ? Colors.white : slate400),
+                      const SizedBox(width: 10),
+                      Text(
+                        'Fermer les inscriptions et lancer',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: (approved.length + t.teams.length) >= 3 ? Colors.white : slate400,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _closeRegistrationAndLaunch(Tournament t, List<Registration> approved) async {
+    // Convert approved registrations to teams
+    final newTeams = <TournamentTeam>[];
+    for (final reg in approved) {
+      newTeams.add(TournamentTeam(
+        id: generateId(),
+        name: reg.type == 'team' && reg.teamName.isNotEmpty
+            ? reg.teamName
+            : reg.players.isNotEmpty
+                ? reg.players.first
+                : 'Équipe ${t.teams.length + newTeams.length + 1}',
+        players: reg.players,
+        color: reg.color.isNotEmpty ? reg.color : '#2563EB',
+      ));
+    }
+
+    // Merge with any pre-added teams
+    t.teams.addAll(newTeams);
+
+    // Generate pools
+    if (t.teams.length >= 3) {
+      final List<Pool> pools;
+      if (t.mode == 'championnat') {
+        pools = generateChampionnatPools(t.teams, poolCount: _calculatePoolCount(t.teams.length), targetScore: t.targetScore);
+      } else {
+        pools = generatePools(t.teams, poolCount: _calculatePoolCount(t.teams.length));
+      }
+      t.pools = pools;
+    }
+
+    t.phase = 'pools';
+
+    await TournamentStorage.saveTournament(t);
+
+    // Push to Firestore
+    if (t.isShared) {
+      FirebaseTournamentService.pushTournamentUpdate(t).catchError((_) {});
+    }
+
+    if (mounted) {
+      setState(() {
+        _tournament = t;
+      });
+    }
+  }
+
+  int _calculatePoolCount(int teamCount) {
+    if (teamCount <= 4) return 1;
+    if (teamCount <= 8) return 2;
+    if (teamCount <= 12) return 3;
+    if (teamCount <= 16) return 4;
+    return (teamCount / 4).ceil();
   }
 
   Widget _buildHeader(Tournament t, Color phaseCol, Color phaseBg, double progress, Color themeColor600) {
@@ -325,6 +594,19 @@ class _TournamentDashboardScreenState extends State<TournamentDashboardScreen>
                   ],
                 ),
               ),
+              if (t.isShared) const LiveBadge(),
+              if (t.isShared || context.read<PurchaseProvider>().isPro)
+                IconButton(
+                  onPressed: () => _toggleSharing(t),
+                  icon: Icon(
+                    t.isShared ? LucideIcons.wifi : LucideIcons.share2,
+                    size: 20,
+                    color: t.isShared ? const Color(0xFF10B981) : slate400,
+                  ),
+                  tooltip: t.isShared ? 'Partage actif' : 'Partager',
+                  constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                  padding: EdgeInsets.zero,
+                ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(color: phaseBg, borderRadius: BorderRadius.circular(20)),

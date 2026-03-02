@@ -17,6 +17,9 @@ import 'screens/tournament_create_screen.dart';
 import 'screens/tournament_dashboard_screen.dart';
 import 'screens/tournament_bracket_screen.dart';
 import 'screens/tournament_match_screen.dart';
+import 'screens/join_tournament_screen.dart';
+import 'screens/live_tournament_screen.dart';
+import 'screens/registration_form_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -65,6 +68,15 @@ final _router = GoRouter(
       builder: (_, state) => HelpScreen(
         initialSection: state.uri.queryParameters['section'],
       ),
+    ),
+    GoRoute(path: '/tournament/join', builder: (_, __) => const JoinTournamentScreen()),
+    GoRoute(
+      path: '/tournament/live/:id',
+      builder: (_, state) => LiveTournamentScreen(tournamentId: state.pathParameters['id']!),
+    ),
+    GoRoute(
+      path: '/tournament/register/:id',
+      builder: (_, state) => RegistrationFormScreen(tournamentId: state.pathParameters['id']!),
     ),
     GoRoute(path: '/tournament', builder: (_, __) => const TournamentListScreen(modeFilter: 'tournoi')),
     GoRoute(path: '/championnat', builder: (_, __) => const TournamentListScreen(modeFilter: 'championnat')),

@@ -224,6 +224,14 @@ class Tournament {
   bool hasThirdPlace;
   String? winnerId;
   String createdAt;
+  // Sharing fields
+  String? shareCode;    // e.g. "PET-A3K9", null if not shared
+  bool isShared;        // true if currently synced to Firestore
+  String? organizerId;  // Firebase anonymous UID of the organizer
+  // Registration fields
+  String registrationType; // "none" | "team" | "individual"
+  bool autoApprove;        // auto-approve registrations or manual validation
+  int? maxTeams;           // optional max teams limit
 
   Tournament({
     required this.id,
@@ -241,6 +249,12 @@ class Tournament {
     this.hasThirdPlace = false,
     this.winnerId,
     required this.createdAt,
+    this.shareCode,
+    this.isShared = false,
+    this.organizerId,
+    this.registrationType = 'none',
+    this.autoApprove = true,
+    this.maxTeams,
   });
 
   Map<String, dynamic> toJson() => {
@@ -253,6 +267,12 @@ class Tournament {
     'bracket': bracket.map((b) => b.toJson()).toList(),
     'phase': phase, 'hasThirdPlace': hasThirdPlace,
     'winnerId': winnerId, 'createdAt': createdAt,
+    if (shareCode != null) 'shareCode': shareCode,
+    'isShared': isShared,
+    if (organizerId != null) 'organizerId': organizerId,
+    'registrationType': registrationType,
+    'autoApprove': autoApprove,
+    if (maxTeams != null) 'maxTeams': maxTeams,
   };
 
   factory Tournament.fromJson(Map<String, dynamic> json) => Tournament(
@@ -271,5 +291,11 @@ class Tournament {
     hasThirdPlace: json['hasThirdPlace'] as bool? ?? false,
     winnerId: json['winnerId'] as String?,
     createdAt: json['createdAt'] as String,
+    shareCode: json['shareCode'] as String?,
+    isShared: json['isShared'] as bool? ?? false,
+    organizerId: json['organizerId'] as String?,
+    registrationType: json['registrationType'] as String? ?? 'none',
+    autoApprove: json['autoApprove'] as bool? ?? true,
+    maxTeams: json['maxTeams'] as int?,
   );
 }

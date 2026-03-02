@@ -295,6 +295,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   if (!_selectionMode) ...[
                     const SizedBox(height: 16),
                     _buildActionButtons(themeColor600),
+                    const SizedBox(height: 10),
+                    _buildFollowButton(themeColor600),
                   ],
 
                   // ── Active tournament banner ──
@@ -522,6 +524,37 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildFollowButton(Color themeColor600) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: GestureDetector(
+        onTap: () async {
+          await context.push('/tournament/join');
+          if (mounted) _loadData();
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: slate200),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(LucideIcons.radio, size: 18, color: themeColor600),
+              const SizedBox(width: 8),
+              Text(
+                'Suivre un tournoi',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: themeColor600),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

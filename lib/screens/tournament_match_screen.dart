@@ -5,6 +5,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 
 import 'package:petanque_score/models/tournament.dart';
 import 'package:petanque_score/services/tournament_storage.dart';
+import 'package:petanque_score/services/firebase_tournament_service.dart';
 import 'package:petanque_score/utils/tournament_logic.dart';
 import 'package:petanque_score/providers/theme_provider.dart';
 import 'package:petanque_score/utils/colors.dart';
@@ -221,6 +222,11 @@ class _TournamentMatchScreenState extends State<TournamentMatchScreen> {
     }
 
     await TournamentStorage.saveTournament(t);
+
+    // Push to Firestore if shared
+    if (t.isShared) {
+      FirebaseTournamentService.pushTournamentUpdate(t).catchError((_) {});
+    }
 
     if (!mounted) return;
     if (context.canPop()) {

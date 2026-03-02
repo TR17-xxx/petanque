@@ -1,6 +1,6 @@
 {
-  "version": "1.3.0",
-  "apk_url": "https://github.com/TR17-xxx/petanque/releases/download/v1.3.0/petanque.apk",
-  "changelog": "⚠️ IMPORTANT : Désinstallez l'ancienne version avant d'installer celle-ci (changement de clé de signature)\n\n- Version Pro : tournois et thèmes premium\n- Offrir un pastis : don de soutien via PayPal\n- Cochonnet : éditeur amélioré avec zoom\n- Règles championnat : lien direct vers l'aide\n- Corrections diverses",
-  "force_uninstall": true
+  "version": "1.4.0",
+  "apk_url": "https://github.com/TR17-xxx/petanque/releases/download/v1.4.0/petanque.apk",
+  "changelog": "- Partage de tournoi en temps réel via Firebase\n- Suivi live pour les spectateurs (code PET-XXXX)\n- Inscriptions en ligne : les joueurs s'inscrivent eux-mêmes\n- Choix inscription par équipe ou individuel\n- Validation automatique ou manuelle par l'organisateur\n- Gestion des inscriptions en temps réel",
+  "force_uninstall": false
 }

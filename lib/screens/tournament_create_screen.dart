@@ -5,6 +5,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 
 import 'package:petanque_score/models/tournament.dart';
 import 'package:petanque_score/services/tournament_storage.dart';
+import 'package:petanque_score/services/firebase_tournament_service.dart';
 import 'package:petanque_score/utils/tournament_logic.dart';
 import 'package:petanque_score/utils/helpers.dart';
 import 'package:petanque_score/providers/theme_provider.dart';
@@ -41,6 +42,12 @@ class _TournamentCreateScreenState extends State<TournamentCreateScreen> {
   bool _hasThirdPlace = false;
   int _poolTargetScore = 13;
   int _bracketTargetScore = 13;
+
+  // Registration config
+  bool _enableRegistration = false;
+  String _registrationType = 'team'; // team | individual
+  bool _autoApprove = true;
+  int? _maxTeams;
 
   // Step 2: Teams
   final List<_TeamData> _teams = [];
@@ -151,6 +158,8 @@ class _TournamentCreateScreenState extends State<TournamentCreateScreen> {
   }
 
   bool _canGoStep3() {
+    // When registration is enabled, teams are optional (they'll come from registrations)
+    if (_enableRegistration) return true;
     if (_teams.length < 3) return false;
     for (final team in _teams) {
       if (team.nameController.text.trim().isEmpty) return false;
@@ -229,6 +238,45 @@ class _TournamentCreateScreenState extends State<TournamentCreateScreen> {
       );
     }).toList();
 
+    // If registration mode, create tournament without pools
+    if (_enableRegistration) {
+      final tournament = Tournament(
+        id: generateId(),
+        name: _nameController.text.trim(),
+        date: _dateController.text.trim(),
+        location: _locationController.text.trim(),
+        gameType: _gameType,
+        mode: _mode,
+        targetScore: _mode == 'championnat' ? _poolTargetScore : 13,
+        bracketTargetScore: _mode == 'championnat' ? _bracketTargetScore : null,
+        teams: teams, // may be empty or pre-added by organizer
+        pools: [],
+        bracket: [],
+        phase: 'registration',
+        hasThirdPlace: _hasThirdPlace,
+        createdAt: DateTime.now().toIso8601String(),
+        registrationType: _registrationType,
+        autoApprove: _autoApprove,
+        maxTeams: _maxTeams,
+      );
+
+      await TournamentStorage.saveTournament(tournament);
+      await TournamentStorage.setActiveTournament(tournament.id);
+
+      // Auto-share to Firebase
+      try {
+        await FirebaseTournamentService.shareTournament(tournament);
+        await TournamentStorage.saveTournament(tournament);
+      } catch (_) {
+        // Continue even if sharing fails — organizer can retry from dashboard
+      }
+
+      if (!mounted) return;
+      context.pushReplacement('/tournament/${tournament.id}');
+      return;
+    }
+
+    // Standard mode: generate pools immediately
     final List<Pool> pools;
     if (_mode == 'championnat') {
       pools = _usePools
@@ -600,6 +648,83 @@ class _TournamentCreateScreenState extends State<TournamentCreateScreen> {
           ),
           const SizedBox(height: 24),
 
+          // Online registration
+          const Text('Inscriptions en ligne', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: slate700)),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: _enableRegistration ? themeColor600.withValues(alpha: 0.3) : slate200),
+            ),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Ouvrir les inscriptions', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: slate800)),
+                          const SizedBox(height: 2),
+                          Text(
+                            _enableRegistration
+                                ? 'Les joueurs pourront s\'inscrire via le code de partage'
+                                : 'L\'organisateur ajoute les équipes manuellement',
+                            style: const TextStyle(fontSize: 12, color: slate500),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Switch(
+                      value: _enableRegistration,
+                      onChanged: (v) => setState(() => _enableRegistration = v),
+                      activeTrackColor: themeColor600,
+                    ),
+                  ],
+                ),
+                if (_enableRegistration) ...[
+                  const SizedBox(height: 16),
+                  // Registration type
+                  Row(
+                    children: [
+                      _buildOptionButton('Par équipe', _registrationType == 'team', themeColor600, themeColor50, () {
+                        setState(() => _registrationType = 'team');
+                      }),
+                      const SizedBox(width: 8),
+                      _buildOptionButton('Individuel', _registrationType == 'individual', themeColor600, themeColor50, () {
+                        setState(() => _registrationType = 'individual');
+                      }),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  // Auto-approve
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: const [
+                            Text('Validation automatique', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: slate700)),
+                            SizedBox(height: 2),
+                            Text('Inscriptions acceptées sans approbation', style: TextStyle(fontSize: 11, color: slate500)),
+                          ],
+                        ),
+                      ),
+                      Switch(
+                        value: _autoApprove,
+                        onChanged: (v) => setState(() => _autoApprove = v),
+                        activeTrackColor: themeColor600,
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+
           // Third place
           Container(
             padding: const EdgeInsets.all(16),
@@ -655,6 +780,30 @@ class _TournamentCreateScreenState extends State<TournamentCreateScreen> {
   Widget _buildStep2(Color themeColor600, Color themeColor50) {
     return Column(
       children: [
+        // Info banner if registration is enabled
+        if (_enableRegistration)
+          Container(
+            margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF0F9FF),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFFBAE6FD)),
+            ),
+            child: Row(
+              children: [
+                Icon(LucideIcons.info, size: 18, color: themeColor600),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Text(
+                    'Les inscriptions en ligne sont activées. Vous pouvez pré-ajouter des équipes ou passer directement au résumé.',
+                    style: TextStyle(fontSize: 12, color: slate700, height: 1.4),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
         // Team count header
         Padding(
           padding: const EdgeInsets.all(16),
@@ -865,7 +1014,9 @@ class _TournamentCreateScreenState extends State<TournamentCreateScreen> {
       color: t.color,
     )).toList();
     final List<Pool> pools;
-    if (_mode == 'championnat') {
+    if (_enableRegistration || previewTeams.length < 3) {
+      pools = [];
+    } else if (_mode == 'championnat') {
       pools = _usePools
           ? generateChampionnatPools(previewTeams, poolCount: _poolCount, targetScore: _poolTargetScore)
           : generateChampionnatPools(previewTeams, poolCount: 1, targetScore: _poolTargetScore);
@@ -915,12 +1066,19 @@ class _TournamentCreateScreenState extends State<TournamentCreateScreen> {
                   const SizedBox(height: 4),
                   _buildInfoRow(LucideIcons.medal, 'Match 3ème place'),
                 ],
+                if (_enableRegistration) ...[
+                  const SizedBox(height: 4),
+                  _buildInfoRow(LucideIcons.clipboardList, 'Inscriptions en ligne (${_registrationType == 'team' ? 'par équipe' : 'individuel'})'),
+                  const SizedBox(height: 4),
+                  _buildInfoRow(LucideIcons.checkCircle, _autoApprove ? 'Validation automatique' : 'Validation manuelle'),
+                ],
               ],
             ),
           ),
           const SizedBox(height: 16),
 
-          // Pool preview
+          // Pool preview (only if not registration mode or if teams are pre-added)
+          if (!_enableRegistration) ...[
           const Text('Aperçu des poules', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: slate800)),
           const SizedBox(height: 8),
           for (final pool in pools)
@@ -987,6 +1145,53 @@ class _TournamentCreateScreenState extends State<TournamentCreateScreen> {
               ),
             ),
           const SizedBox(height: 24),
+          ], // end if (!_enableRegistration)
+
+          // Registration mode info
+          if (_enableRegistration) ...[
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0F9FF),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFBAE6FD)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(LucideIcons.wifi, size: 18, color: themeColor600),
+                      const SizedBox(width: 8),
+                      Text('Partage automatique', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: themeColor600)),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Le tournoi sera automatiquement partagé en ligne. Un code de partage sera généré pour que les joueurs puissent s\'inscrire.',
+                    style: TextStyle(fontSize: 12, color: slate700, height: 1.4),
+                  ),
+                ],
+              ),
+            ),
+            if (_teams.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              Text('${_teams.length} équipes pré-ajoutées', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: slate700)),
+              const SizedBox(height: 8),
+              for (final team in _teams)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Row(
+                    children: [
+                      Container(width: 10, height: 10, decoration: BoxDecoration(color: parseHex(team.color), shape: BoxShape.circle)),
+                      const SizedBox(width: 8),
+                      Text(team.nameController.text.trim(), style: const TextStyle(fontSize: 13, color: slate700)),
+                    ],
+                  ),
+                ),
+            ],
+            const SizedBox(height: 24),
+          ],
 
           // Launch button
           GestureDetector(
@@ -1005,14 +1210,14 @@ class _TournamentCreateScreenState extends State<TournamentCreateScreen> {
                   ),
                 ],
               ),
-              child: const Row(
+              child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(LucideIcons.rocket, size: 20, color: Colors.white),
-                  SizedBox(width: 10),
+                  Icon(_enableRegistration ? LucideIcons.clipboardList : LucideIcons.rocket, size: 20, color: Colors.white),
+                  const SizedBox(width: 10),
                   Text(
-                    'Lancer le tournoi',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white),
+                    _enableRegistration ? 'Ouvrir les inscriptions' : 'Lancer le tournoi',
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white),
                   ),
                 ],
               ),
