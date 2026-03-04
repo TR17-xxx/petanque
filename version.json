@@ -1,6 +1,6 @@
 {
-  "version": "1.4.0",
-  "apk_url": "https://github.com/TR17-xxx/petanque/releases/download/v1.4.0/petanque.apk",
-  "changelog": "- Partage de tournoi en temps réel via Firebase\n- Suivi live pour les spectateurs (code PET-XXXX)\n- Inscriptions en ligne : les joueurs s'inscrivent eux-mêmes\n- Choix inscription par équipe ou individuel\n- Validation automatique ou manuelle par l'organisateur\n- Gestion des inscriptions en temps réel",
+  "version": "1.5.0",
+  "apk_url": "https://github.com/TR17-xxx/petanque/releases/download/v1.5.0/petanque.apk",
+  "changelog": "- Sécurité renforcée (règles Firestore, HTTPS, stockage sécurisé)\n- Unicité des couleurs d'équipe dans les inscriptions\n- Capitalisation automatique des noms\n- Formatage automatique du code de partage PET-XXXXXX\n- Correction du bug de re-validation après révocation\n- Nettoyage Firestore lors de la suppression d'un tournoi\n- Minification R8/ProGuard activée",
   "force_uninstall": false
 }
