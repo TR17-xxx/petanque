@@ -232,6 +232,8 @@ class Tournament {
   String registrationType; // "none" | "team" | "individual"
   bool autoApprove;        // auto-approve registrations or manual validation
   int? maxTeams;           // optional max teams limit
+  // Pool configuration (stored for registration mode)
+  int? poolCount;          // user-chosen pool count (null = auto-calculate)
 
   Tournament({
     required this.id,
@@ -255,6 +257,7 @@ class Tournament {
     this.registrationType = 'none',
     this.autoApprove = true,
     this.maxTeams,
+    this.poolCount,
   });
 
   Map<String, dynamic> toJson() => {
@@ -273,6 +276,7 @@ class Tournament {
     'registrationType': registrationType,
     'autoApprove': autoApprove,
     if (maxTeams != null) 'maxTeams': maxTeams,
+    if (poolCount != null) 'poolCount': poolCount,
   };
 
   factory Tournament.fromJson(Map<String, dynamic> json) => Tournament(
@@ -297,5 +301,6 @@ class Tournament {
     registrationType: json['registrationType'] as String? ?? 'none',
     autoApprove: json['autoApprove'] as bool? ?? true,
     maxTeams: json['maxTeams'] as int?,
+    poolCount: json['poolCount'] as int?,
   );
 }

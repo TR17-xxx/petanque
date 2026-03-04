@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:lucide_icons/lucide_icons.dart';
@@ -30,6 +31,10 @@ class _RegistrationFormScreenState extends State<RegistrationFormScreen> {
   bool _loading = true;
   bool _submitting = false;
   bool _submitted = false;
+  bool _isFull = false; // true when maxTeams is reached
+  bool _maybeFull = false; // true when pending+approved >= maxTeams (user might not be selected)
+  int _approvedCount = 0;
+  Set<String> _takenColors = {}; // colors already used by approved/pending registrations
 
   final _teamNameController = TextEditingController();
   final List<TextEditingController> _playerControllers = [];
@@ -51,13 +56,40 @@ class _RegistrationFormScreenState extends State<RegistrationFormScreen> {
   }
 
   void _loadTournament() {
-    FirebaseTournamentService.streamTournament(widget.tournamentId).first.then((t) {
+    FirebaseTournamentService.streamTournament(widget.tournamentId).first.then((t) async {
       if (!mounted) return;
       if (t != null) {
         final count = _playersPerTeam(t.gameType);
         for (int i = 0; i < count; i++) {
           _playerControllers.add(TextEditingController());
         }
+        // Fetch registrations to check capacity and taken colors
+        try {
+          final regs = await FirebaseTournamentService.streamRegistrations(t.id).first;
+          // Collect colors used by approved or pending registrations
+          _takenColors = regs
+              .where((r) => r.status == 'approved' || r.status == 'pending')
+              .map((r) => r.color)
+              .where((c) => c.isNotEmpty)
+              .toSet();
+          // Also collect colors from teams already in the tournament
+          for (final team in t.teams) {
+            if (team.color.isNotEmpty) _takenColors.add(team.color);
+          }
+          // Auto-select first available color
+          final available = _teamColors.where((c) => !_takenColors.contains(c)).toList();
+          if (available.isNotEmpty) {
+            _selectedColor = available.first;
+          }
+          // Check if tournament is full or nearly full
+          if (t.maxTeams != null) {
+            final approved = regs.where((r) => r.status == 'approved').length;
+            final pending = regs.where((r) => r.status == 'pending').length;
+            _approvedCount = approved + t.teams.length;
+            _isFull = _approvedCount >= t.maxTeams!;
+            _maybeFull = !_isFull && (_approvedCount + pending) >= t.maxTeams!;
+          }
+        } catch (_) {}
       }
       setState(() {
         _tournament = t;
@@ -179,6 +211,10 @@ class _RegistrationFormScreenState extends State<RegistrationFormScreen> {
       return _buildSuccessScreen(themeColor600);
     }
 
+    if (_isFull) {
+      return _buildFullScreen(themeColor600);
+    }
+
     return _buildForm(themeColor600, themeColor50);
   }
 
@@ -232,6 +268,60 @@ class _RegistrationFormScreenState extends State<RegistrationFormScreen> {
                     ),
                     child: const Text(
                       'Retour au tournoi',
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFullScreen(Color themeColor600) {
+    final t = _tournament!;
+    return Scaffold(
+      backgroundColor: slate50,
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: 80,
+                  height: 80,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFEF4444),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(LucideIcons.userX, size: 40, color: Colors.white),
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  'Inscriptions compl\u00e8tes',
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: slate800),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Ce tournoi a atteint le nombre maximum d\'inscriptions (${t.maxTeams}).',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 14, color: slate500),
+                ),
+                const SizedBox(height: 32),
+                GestureDetector(
+                  onTap: () => context.pop(),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
+                    decoration: BoxDecoration(
+                      color: themeColor600,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Text(
+                      'Retour',
                       style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white),
                     ),
                   ),
@@ -302,13 +392,44 @@ class _RegistrationFormScreenState extends State<RegistrationFormScreen> {
                                   '${t.date}${t.location.isNotEmpty ? ' — ${t.location}' : ''}',
                                   style: const TextStyle(fontSize: 12, color: slate500),
                                 ),
+                                if (t.maxTeams != null)
+                                  Text(
+                                    'Places : $_approvedCount / ${t.maxTeams}',
+                                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: slate500),
+                                  ),
                               ],
                             ),
                           ),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 16),
+
+                    // Warning: slots may be full
+                    if (_maybeFull)
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        margin: const EdgeInsets.only(bottom: 16),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFFBEB),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFFFDE68A)),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(LucideIcons.alertTriangle, size: 18, color: Color(0xFFF59E0B)),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                'Le nombre d\'inscriptions (en attente + valid\u00e9es) a atteint la limite de ${t.maxTeams} places. '
+                                'Votre inscription pourrait ne pas \u00eatre retenue.',
+                                style: const TextStyle(fontSize: 12, color: Color(0xFF92400E), height: 1.4),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
 
                     // Team name (if team mode)
                     if (isTeam) ...[
@@ -337,6 +458,29 @@ class _RegistrationFormScreenState extends State<RegistrationFormScreen> {
                     // Color picker
                     const Text('Couleur', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: slate700)),
                     const SizedBox(height: 8),
+                    // If all colors are taken, allow duplicates
+                    if (_takenColors.length >= _teamColors.length)
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        margin: const EdgeInsets.only(bottom: 8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFFBEB),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFFFDE68A)),
+                        ),
+                        child: const Row(
+                          children: [
+                            Icon(LucideIcons.info, size: 16, color: Color(0xFFF59E0B)),
+                            SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Toutes les couleurs sont prises. Vous pouvez en choisir une déjà utilisée.',
+                                style: TextStyle(fontSize: 12, color: Color(0xFF92400E)),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
@@ -349,22 +493,29 @@ class _RegistrationFormScreenState extends State<RegistrationFormScreen> {
                         runSpacing: 8,
                         children: _teamColors.map((c) {
                           final isSelected = _selectedColor == c;
+                          final allTaken = _takenColors.length >= _teamColors.length;
+                          final isTaken = !allTaken && _takenColors.contains(c);
                           final color = parseHex(c);
                           return GestureDetector(
-                            onTap: () => setState(() => _selectedColor = c),
-                            child: Container(
-                              width: 36,
-                              height: 36,
-                              decoration: BoxDecoration(
-                                color: color,
-                                shape: BoxShape.circle,
-                                border: isSelected
-                                    ? Border.all(color: slate800, width: 3)
-                                    : Border.all(color: Colors.transparent, width: 3),
+                            onTap: isTaken ? null : () => setState(() => _selectedColor = c),
+                            child: Opacity(
+                              opacity: isTaken ? 0.3 : 1.0,
+                              child: Container(
+                                width: 36,
+                                height: 36,
+                                decoration: BoxDecoration(
+                                  color: color,
+                                  shape: BoxShape.circle,
+                                  border: isSelected
+                                      ? Border.all(color: slate800, width: 3)
+                                      : Border.all(color: Colors.transparent, width: 3),
+                                ),
+                                child: isSelected
+                                    ? const Icon(Icons.check, size: 18, color: Colors.white)
+                                    : isTaken
+                                        ? const Icon(Icons.block, size: 18, color: Colors.white)
+                                        : null,
                               ),
-                              child: isSelected
-                                  ? const Icon(Icons.check, size: 18, color: Colors.white)
-                                  : null,
                             ),
                           );
                         }).toList(),
@@ -420,6 +571,8 @@ class _RegistrationFormScreenState extends State<RegistrationFormScreen> {
   Widget _buildTextField(TextEditingController controller, String hint, Color themeColor600) {
     return TextField(
       controller: controller,
+      textCapitalization: TextCapitalization.words,
+      inputFormatters: [LengthLimitingTextInputFormatter(40)],
       style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: slate800),
       decoration: InputDecoration(
         hintText: hint,

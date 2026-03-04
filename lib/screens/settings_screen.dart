@@ -59,6 +59,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final key = _apiKeyController.text.trim();
     if (key.isEmpty) return;
 
+    // Validate API key format
+    if (!key.startsWith('sk-ant-')) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Format de clé invalide. La clé doit commencer par "sk-ant-".'),
+            backgroundColor: const Color(0xFFEF4444),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+        );
+      }
+      return;
+    }
+
     await SecureStorageService.saveApiKey(key);
 
     if (!mounted) return;

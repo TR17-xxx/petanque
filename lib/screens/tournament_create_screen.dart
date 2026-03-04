@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:lucide_icons/lucide_icons.dart';
@@ -50,6 +51,7 @@ class _TournamentCreateScreenState extends State<TournamentCreateScreen> {
   int? _maxTeams;
 
   // Step 2: Teams
+  String _teamCreationMode = 'generate'; // generate | manual
   final List<_TeamData> _teams = [];
 
   @override
@@ -103,8 +105,9 @@ class _TournamentCreateScreenState extends State<TournamentCreateScreen> {
     return _poolCount * _teamsPerPool;
   }
 
-  /// Synchronise la liste _teams avec le nombre cible.
+  /// Synchronise la liste _teams avec le nombre cible (mode generate uniquement).
   void _syncTeamsCount() {
+    if (_teamCreationMode == 'manual') return;
     final target = _targetTeamCount();
     // Ajouter des équipes si nécessaire
     while (_teams.length < target) {
@@ -125,6 +128,17 @@ class _TournamentCreateScreenState extends State<TournamentCreateScreen> {
     }
   }
 
+  /// Vide toutes les équipes (passage en mode manuel).
+  void _clearAllTeams() {
+    for (final team in _teams) {
+      team.nameController.dispose();
+      for (final pc in team.playerControllers) {
+        pc.dispose();
+      }
+    }
+    _teams.clear();
+  }
+
   void _addTeam() {
     setState(() {
       final idx = _teams.length;
@@ -137,7 +151,8 @@ class _TournamentCreateScreenState extends State<TournamentCreateScreen> {
   }
 
   void _removeTeam(int index) {
-    if (_teams.length <= 2) return;
+    final minTeams = _teamCreationMode == 'manual' ? 0 : 2;
+    if (_teams.length <= minTeams) return;
     setState(() {
       _teams[index].nameController.dispose();
       for (final pc in _teams[index].playerControllers) {
@@ -160,6 +175,15 @@ class _TournamentCreateScreenState extends State<TournamentCreateScreen> {
   bool _canGoStep3() {
     // When registration is enabled, teams are optional (they'll come from registrations)
     if (_enableRegistration) return true;
+    // Manual mode: at least 3 teams with names
+    if (_teamCreationMode == 'manual') {
+      if (_teams.length < 3) return false;
+      for (final team in _teams) {
+        if (team.nameController.text.trim().isEmpty) return false;
+      }
+      return true;
+    }
+    // Generate mode: standard validation
     if (_teams.length < 3) return false;
     for (final team in _teams) {
       if (team.nameController.text.trim().isEmpty) return false;
@@ -238,7 +262,7 @@ class _TournamentCreateScreenState extends State<TournamentCreateScreen> {
       );
     }).toList();
 
-    // If registration mode, create tournament without pools
+    // If registration mode, create tournament without pools and without pre-generated teams
     if (_enableRegistration) {
       final tournament = Tournament(
         id: generateId(),
@@ -249,7 +273,7 @@ class _TournamentCreateScreenState extends State<TournamentCreateScreen> {
         mode: _mode,
         targetScore: _mode == 'championnat' ? _poolTargetScore : 13,
         bracketTargetScore: _mode == 'championnat' ? _bracketTargetScore : null,
-        teams: teams, // may be empty or pre-added by organizer
+        teams: [], // teams come from registrations, not pre-generated
         pools: [],
         bracket: [],
         phase: 'registration',
@@ -258,6 +282,7 @@ class _TournamentCreateScreenState extends State<TournamentCreateScreen> {
         registrationType: _registrationType,
         autoApprove: _autoApprove,
         maxTeams: _maxTeams,
+        poolCount: _usePools ? _poolCount : 1,
       );
 
       await TournamentStorage.saveTournament(tournament);
@@ -277,15 +302,28 @@ class _TournamentCreateScreenState extends State<TournamentCreateScreen> {
     }
 
     // Standard mode: generate pools immediately
+    // In manual mode, auto-calculate pool count based on team count
+    int effectivePoolCount;
+    if (_teamCreationMode == 'manual') {
+      final nbTeams = teams.length;
+      if (nbTeams <= 4) {
+        effectivePoolCount = 1;
+      } else if (nbTeams <= 8) {
+        effectivePoolCount = 2;
+      } else if (nbTeams <= 12) {
+        effectivePoolCount = 3;
+      } else {
+        effectivePoolCount = (nbTeams / 4).ceil();
+      }
+    } else {
+      effectivePoolCount = _usePools ? _poolCount : 1;
+    }
+
     final List<Pool> pools;
     if (_mode == 'championnat') {
-      pools = _usePools
-          ? generateChampionnatPools(teams, poolCount: _poolCount, targetScore: _poolTargetScore)
-          : generateChampionnatPools(teams, poolCount: 1, targetScore: _poolTargetScore);
+      pools = generateChampionnatPools(teams, poolCount: effectivePoolCount, targetScore: _poolTargetScore);
     } else {
-      pools = _usePools
-          ? generatePools(teams, poolCount: _poolCount)
-          : generatePools(teams, poolCount: 1);
+      pools = generatePools(teams, poolCount: effectivePoolCount);
     }
 
     final tournament = Tournament(
@@ -353,7 +391,8 @@ class _TournamentCreateScreenState extends State<TournamentCreateScreen> {
               IconButton(
                 onPressed: () {
                   if (_step > 0) {
-                    setState(() => _step--);
+                    // When registration is enabled, skip step 1 (teams) going back
+                    setState(() => _step = (_enableRegistration && _step == 2) ? 0 : _step - 1);
                   } else {
                     context.pop();
                   }
@@ -376,19 +415,36 @@ class _TournamentCreateScreenState extends State<TournamentCreateScreen> {
           // Progress dots
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
-            children: List.generate(3, (i) {
-              final isActive = i == _step;
-              final isPast = i < _step;
-              return Container(
-                width: isActive ? 24 : 8,
-                height: 8,
-                margin: const EdgeInsets.symmetric(horizontal: 4),
-                decoration: BoxDecoration(
-                  color: isActive || isPast ? Colors.white : Colors.white.withValues(alpha: 0.4),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-              );
-            }),
+            children: _enableRegistration
+                // 2-step flow when registration enabled: Info → Résumé
+                ? List.generate(2, (i) {
+                    final stepIndex = i == 0 ? 0 : 2; // map to actual steps 0 and 2
+                    final isActive = _step == stepIndex;
+                    final isPast = _step > stepIndex;
+                    return Container(
+                      width: isActive ? 24 : 8,
+                      height: 8,
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      decoration: BoxDecoration(
+                        color: isActive || isPast ? Colors.white : Colors.white.withValues(alpha: 0.4),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    );
+                  })
+                // 3-step flow: Info → Équipes → Résumé
+                : List.generate(3, (i) {
+                    final isActive = i == _step;
+                    final isPast = i < _step;
+                    return Container(
+                      width: isActive ? 24 : 8,
+                      height: 8,
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      decoration: BoxDecoration(
+                        color: isActive || isPast ? Colors.white : Colors.white.withValues(alpha: 0.4),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    );
+                  }),
           ),
           const SizedBox(height: 8),
         ],
@@ -719,6 +775,56 @@ class _TournamentCreateScreenState extends State<TournamentCreateScreen> {
                       ),
                     ],
                   ),
+                  const SizedBox(height: 12),
+                  // Max teams
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: const [
+                            Text('Nombre max d\'équipes', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: slate700)),
+                            SizedBox(height: 2),
+                            Text('Laisser vide = illimité', style: TextStyle(fontSize: 11, color: slate500)),
+                          ],
+                        ),
+                      ),
+                      SizedBox(
+                        width: 80,
+                        child: TextField(
+                          keyboardType: TextInputType.number,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: slate800),
+                          decoration: InputDecoration(
+                            hintText: '—',
+                            hintStyle: const TextStyle(color: slate400),
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                            filled: true,
+                            fillColor: slate50,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: const BorderSide(color: slate200),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: const BorderSide(color: slate200),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: BorderSide(color: themeColor600, width: 2),
+                            ),
+                          ),
+                          onChanged: (v) {
+                            setState(() {
+                              final n = int.tryParse(v);
+                              _maxTeams = (n != null && n > 0) ? n : null;
+                            });
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
                 ],
               ],
             ),
@@ -757,7 +863,8 @@ class _TournamentCreateScreenState extends State<TournamentCreateScreen> {
 
           // Next button
           _buildNextButton('Suivant', _canGoStep2(), themeColor600, () {
-            if (_canGoStep2()) setState(() => _step = 1);
+            // Skip team step (step 1) when registration is enabled
+            if (_canGoStep2()) setState(() => _step = _enableRegistration ? 2 : 1);
           }),
         ],
       ),
@@ -804,15 +911,92 @@ class _TournamentCreateScreenState extends State<TournamentCreateScreen> {
             ),
           ),
 
+        // Mode selector: generate vs manual
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: Row(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  onTap: () {
+                    if (_teamCreationMode == 'generate') return;
+                    setState(() {
+                      _teamCreationMode = 'generate';
+                      _syncTeamsCount();
+                    });
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    decoration: BoxDecoration(
+                      color: _teamCreationMode == 'generate' ? themeColor600 : Colors.white,
+                      borderRadius: const BorderRadius.horizontal(left: Radius.circular(10)),
+                      border: Border.all(color: _teamCreationMode == 'generate' ? themeColor600 : slate200),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(LucideIcons.layoutGrid, size: 16,
+                          color: _teamCreationMode == 'generate' ? Colors.white : slate500),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Générer tout',
+                          style: TextStyle(
+                            fontSize: 13, fontWeight: FontWeight.w600,
+                            color: _teamCreationMode == 'generate' ? Colors.white : slate500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              Expanded(
+                child: GestureDetector(
+                  onTap: () {
+                    if (_teamCreationMode == 'manual') return;
+                    setState(() {
+                      _teamCreationMode = 'manual';
+                      _clearAllTeams();
+                    });
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    decoration: BoxDecoration(
+                      color: _teamCreationMode == 'manual' ? themeColor600 : Colors.white,
+                      borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
+                      border: Border.all(color: _teamCreationMode == 'manual' ? themeColor600 : slate200),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(LucideIcons.plusCircle, size: 16,
+                          color: _teamCreationMode == 'manual' ? Colors.white : slate500),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Ajouter au fur et à mesure',
+                          style: TextStyle(
+                            fontSize: 13, fontWeight: FontWeight.w600,
+                            color: _teamCreationMode == 'manual' ? Colors.white : slate500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+
         // Team count header
         Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
           child: Row(
             children: [
               Icon(LucideIcons.users, size: 20, color: themeColor600),
               const SizedBox(width: 8),
               Text(
-                '${_teams.length} équipes',
+                '${_teams.length} équipe${_teams.length > 1 ? 's' : ''}',
                 style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: slate800),
               ),
             ],
@@ -824,6 +1008,33 @@ class _TournamentCreateScreenState extends State<TournamentCreateScreen> {
           child: ListView(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             children: [
+              // Empty state for manual mode
+              if (_teamCreationMode == 'manual' && _teams.isEmpty)
+                Container(
+                  margin: const EdgeInsets.only(top: 8, bottom: 8),
+                  padding: const EdgeInsets.symmetric(vertical: 32),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: slate200),
+                  ),
+                  child: Column(
+                    children: [
+                      Icon(LucideIcons.userPlus, size: 36, color: slate300),
+                      const SizedBox(height: 10),
+                      const Text(
+                        'Aucune équipe',
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: slate400),
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Ajoutez les équipes une par une',
+                        style: TextStyle(fontSize: 13, color: slate400),
+                      ),
+                    ],
+                  ),
+                ),
+
               for (var i = 0; i < _teams.length; i++) _buildTeamCard(i, themeColor600, themeColor50),
 
               // Add team button
@@ -850,8 +1061,8 @@ class _TournamentCreateScreenState extends State<TournamentCreateScreen> {
                 ),
               ),
 
-              // Warning si configuration invalide
-              if (_teams.length >= 3 && _validatePoolConfig() != null) ...[
+              // Warning si configuration invalide (only in generate mode)
+              if (_teamCreationMode == 'generate' && _teams.length >= 3 && _validatePoolConfig() != null) ...[
                 const SizedBox(height: 12),
                 Container(
                   padding: const EdgeInsets.all(12),
@@ -921,6 +1132,8 @@ class _TournamentCreateScreenState extends State<TournamentCreateScreen> {
               Expanded(
                 child: TextField(
                   controller: team.nameController,
+                  textCapitalization: TextCapitalization.words,
+                  inputFormatters: [LengthLimitingTextInputFormatter(40)],
                   style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: slate800),
                   decoration: InputDecoration(
                     hintText: 'Nom de l\'équipe',
@@ -932,7 +1145,7 @@ class _TournamentCreateScreenState extends State<TournamentCreateScreen> {
                   onChanged: (_) => setState(() {}),
                 ),
               ),
-              if (_teams.length > 2)
+              if (_teams.length > (_teamCreationMode == 'manual' ? 0 : 2))
                 IconButton(
                   onPressed: () => _removeTeam(index),
                   icon: const Icon(LucideIcons.trash2, size: 18, color: Color(0xFFEF4444)),
@@ -948,6 +1161,8 @@ class _TournamentCreateScreenState extends State<TournamentCreateScreen> {
           for (var p = 0; p < team.playerControllers.length; p++) ...[
             TextField(
               controller: team.playerControllers[p],
+              textCapitalization: TextCapitalization.words,
+              inputFormatters: [LengthLimitingTextInputFormatter(30)],
               style: const TextStyle(fontSize: 13, color: slate700),
               decoration: InputDecoration(
                 hintText: 'Joueur ${p + 1}',
@@ -1016,14 +1231,29 @@ class _TournamentCreateScreenState extends State<TournamentCreateScreen> {
     final List<Pool> pools;
     if (_enableRegistration || previewTeams.length < 3) {
       pools = [];
-    } else if (_mode == 'championnat') {
-      pools = _usePools
-          ? generateChampionnatPools(previewTeams, poolCount: _poolCount, targetScore: _poolTargetScore)
-          : generateChampionnatPools(previewTeams, poolCount: 1, targetScore: _poolTargetScore);
     } else {
-      pools = _usePools
-          ? generatePools(previewTeams, poolCount: _poolCount)
-          : generatePools(previewTeams, poolCount: 1);
+      // Auto-calculate pool count for manual mode
+      int previewPoolCount;
+      if (_teamCreationMode == 'manual') {
+        final n = previewTeams.length;
+        if (n <= 4) {
+          previewPoolCount = 1;
+        } else if (n <= 8) {
+          previewPoolCount = 2;
+        } else if (n <= 12) {
+          previewPoolCount = 3;
+        } else {
+          previewPoolCount = (n / 4).ceil();
+        }
+      } else {
+        previewPoolCount = _usePools ? _poolCount : 1;
+      }
+
+      if (_mode == 'championnat') {
+        pools = generateChampionnatPools(previewTeams, poolCount: previewPoolCount, targetScore: _poolTargetScore);
+      } else {
+        pools = generatePools(previewTeams, poolCount: previewPoolCount);
+      }
     }
 
     return SingleChildScrollView(
@@ -1053,11 +1283,16 @@ class _TournamentCreateScreenState extends State<TournamentCreateScreen> {
                   _buildInfoRow(LucideIcons.mapPin, _locationController.text.trim()),
                 ],
                 const SizedBox(height: 4),
-                _buildInfoRow(LucideIcons.users, '${_teams.length} équipes en ${_gameTypeLabel(_gameType)}'),
+                _buildInfoRow(LucideIcons.users, _enableRegistration
+                    ? 'Inscription en ${_gameTypeLabel(_gameType)}${_maxTeams != null ? ' (max $_maxTeams)' : ''}'
+                    : '${_teams.length} équipes en ${_gameTypeLabel(_gameType)}'),
                 const SizedBox(height: 4),
                 _buildInfoRow(LucideIcons.shield, _mode == 'championnat' ? 'Championnat (FFPJP)' : 'Tournoi classique'),
                 const SizedBox(height: 4),
-                _buildInfoRow(LucideIcons.layoutGrid, _usePools ? '$_poolCount poules' : 'Poule unique'),
+                _buildInfoRow(LucideIcons.layoutGrid,
+                  _teamCreationMode == 'manual'
+                    ? 'Poules auto (selon nb équipes)'
+                    : _usePools ? '$_poolCount poules' : 'Poule unique'),
                 if (_mode == 'championnat') ...[
                   const SizedBox(height: 4),
                   _buildInfoRow(LucideIcons.target, 'Poules: $_poolTargetScore pts — Bracket: $_bracketTargetScore pts'),
@@ -1071,6 +1306,10 @@ class _TournamentCreateScreenState extends State<TournamentCreateScreen> {
                   _buildInfoRow(LucideIcons.clipboardList, 'Inscriptions en ligne (${_registrationType == 'team' ? 'par équipe' : 'individuel'})'),
                   const SizedBox(height: 4),
                   _buildInfoRow(LucideIcons.checkCircle, _autoApprove ? 'Validation automatique' : 'Validation manuelle'),
+                  if (_maxTeams != null) ...[
+                    const SizedBox(height: 4),
+                    _buildInfoRow(LucideIcons.hash, 'Max $_maxTeams équipes'),
+                  ],
                 ],
               ],
             ),
@@ -1242,6 +1481,8 @@ class _TournamentCreateScreenState extends State<TournamentCreateScreen> {
   Widget _buildTextField(TextEditingController controller, String hint, Color themeColor600) {
     return TextField(
       controller: controller,
+      textCapitalization: TextCapitalization.words,
+      inputFormatters: [LengthLimitingTextInputFormatter(50)],
       style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: slate800),
       decoration: InputDecoration(
         hintText: hint,

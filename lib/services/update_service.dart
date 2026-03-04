@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
@@ -13,12 +14,14 @@ class UpdateInfo {
   final String apkUrl;
   final String changelog;
   final bool forceUninstall;
+  final String? sha256;
 
   const UpdateInfo({
     required this.version,
     required this.apkUrl,
     required this.changelog,
     this.forceUninstall = false,
+    this.sha256,
   });
 
   factory UpdateInfo.fromJson(Map<String, dynamic> json) {
@@ -27,6 +30,7 @@ class UpdateInfo {
       apkUrl: json['apk_url'] as String? ?? '',
       changelog: json['changelog'] as String? ?? '',
       forceUninstall: json['force_uninstall'] as bool? ?? false,
+      sha256: json['sha256'] as String?,
     );
   }
 }
@@ -88,7 +92,7 @@ class UpdateService {
 
     final dio = Dio(BaseOptions(
       followRedirects: true,
-      maxRedirects: 5,
+      maxRedirects: 2,
       headers: {
         'Accept': 'application/octet-stream',
         'User-Agent': 'PetanqueScore-App',
@@ -103,11 +107,21 @@ class UpdateService {
         receiveTimeout: const Duration(minutes: 10),
         sendTimeout: const Duration(seconds: 30),
         followRedirects: true,
-        maxRedirects: 5,
+        maxRedirects: 2,
       ),
     );
 
     return filePath;
+  }
+
+  /// Vérifie l'intégrité du fichier APK téléchargé via SHA-256.
+  /// Retourne true si le hash correspond ou si aucun hash n'est fourni.
+  static Future<bool> verifyApkHash(String filePath, String? expectedHash) async {
+    if (expectedHash == null || expectedHash.isEmpty) return true;
+    final file = File(filePath);
+    final bytes = await file.readAsBytes();
+    final fileHash = sha256.convert(bytes).toString();
+    return fileHash.toLowerCase() == expectedHash.toLowerCase();
   }
 
   /// Vérifie si l'app a la permission d'installer des packages.

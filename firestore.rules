@@ -1,0 +1,63 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // --- Tournaments ---
+    match /tournaments/{tournamentId} {
+      // Anyone authenticated can read a tournament (they need the ID via share code)
+      allow read: if request.auth != null;
+
+      // Only the organizer can create/update/delete
+      allow create: if request.auth != null
+                    && request.resource.data.organizerId == request.auth.uid;
+
+      allow update: if request.auth != null
+                    && resource.data.organizerId == request.auth.uid;
+
+      allow delete: if request.auth != null
+                    && resource.data.organizerId == request.auth.uid;
+    }
+
+    // --- Share Codes ---
+    match /share_codes/{code} {
+      // Anyone authenticated can read (to resolve a code)
+      allow read: if request.auth != null;
+
+      // Only the organizer can create/delete share codes
+      allow create: if request.auth != null
+                    && request.resource.data.organizerId == request.auth.uid;
+
+      allow delete: if request.auth != null
+                    && resource.data.organizerId == request.auth.uid;
+
+      // No updates needed for share codes
+      allow update: if false;
+    }
+
+    // --- Registrations ---
+    match /registrations/{regId} {
+      // Anyone authenticated can read registrations (for color checking, etc.)
+      allow read: if request.auth != null;
+
+      // Anyone authenticated can create a registration (with their own createdBy)
+      allow create: if request.auth != null
+                    && request.resource.data.createdBy == request.auth.uid;
+
+      // Only the organizer (matched via organizerId field) or the creator can update
+      allow update: if request.auth != null
+                    && (resource.data.organizerId == request.auth.uid
+                        || resource.data.createdBy == request.auth.uid);
+
+      // Only the organizer or the creator can delete
+      allow delete: if request.auth != null
+                    && (resource.data.organizerId == request.auth.uid
+                        || resource.data.createdBy == request.auth.uid);
+    }
+
+    // Deny everything else
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

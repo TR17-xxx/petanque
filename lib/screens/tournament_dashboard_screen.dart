@@ -444,13 +444,60 @@ class _TournamentDashboardScreenState extends State<TournamentDashboardScreen>
                 isManualApproval: !t.autoApprove,
                 themeColor600: themeColor600,
                 onApprove: (regId) async {
+                  final currentApproved = approved.length + t.teams.length;
+                  // Warn if approving beyond maxTeams
+                  if (t.maxTeams != null && currentApproved >= t.maxTeams!) {
+                    final confirm = await showDialog<bool>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('Dépasser la limite ?'),
+                        content: Text(
+                          'Le nombre maximum d\'équipes est de ${t.maxTeams}. '
+                          'Vous avez déjà $currentApproved inscrits.\n\n'
+                          'Voulez-vous quand même valider cette inscription ?',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx, false),
+                            child: const Text('Annuler'),
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx, true),
+                            child: const Text('Valider quand même'),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (confirm != true) return;
+                  }
                   await FirebaseTournamentService.approveRegistration(regId);
                 },
                 onReject: (regId) async {
                   await FirebaseTournamentService.rejectRegistration(regId);
                 },
                 onDelete: (regId) async {
+                  final confirm = await showDialog<bool>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: const Text('Supprimer l\'inscription ?'),
+                      content: const Text('Cette action est irréversible.'),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx, false),
+                          child: const Text('Annuler'),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx, true),
+                          child: const Text('Supprimer', style: TextStyle(color: Color(0xFFEF4444))),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (confirm != true) return;
                   await FirebaseTournamentService.deleteRegistration(regId);
+                },
+                onRevoke: (regId) async {
+                  await FirebaseTournamentService.revokeRegistration(regId);
                 },
               ),
             ),
@@ -522,17 +569,58 @@ class _TournamentDashboardScreenState extends State<TournamentDashboardScreen>
     // Merge with any pre-added teams
     t.teams.addAll(newTeams);
 
-    // Generate pools
-    if (t.teams.length >= 3) {
-      final List<Pool> pools;
-      if (t.mode == 'championnat') {
-        pools = generateChampionnatPools(t.teams, poolCount: _calculatePoolCount(t.teams.length), targetScore: t.targetScore);
-      } else {
-        pools = generatePools(t.teams, poolCount: _calculatePoolCount(t.teams.length));
+    final teamCount = t.teams.length;
+    if (teamCount < 3) return;
+
+    // Use user's pool config, fallback to auto-calculate
+    int effectivePoolCount = t.poolCount ?? _autoCalculatePoolCount(teamCount);
+
+    // Validate pool config and warn user
+    final conflict = _validatePoolConfig(teamCount, effectivePoolCount, t.mode);
+    if (conflict != null) {
+      if (!mounted) return;
+      final action = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Configuration des poules'),
+          content: Text(
+            '$conflict\n\nQue souhaitez-vous faire ?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, 'cancel'),
+              child: const Text('Annuler'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, 'auto'),
+              child: const Text('Recalculer automatiquement'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, 'force'),
+              child: const Text('Lancer quand même'),
+            ),
+          ],
+        ),
+      );
+      if (action == null || action == 'cancel') {
+        // Remove added teams (revert)
+        t.teams.removeRange(t.teams.length - newTeams.length, t.teams.length);
+        return;
       }
-      t.pools = pools;
+      if (action == 'auto') {
+        effectivePoolCount = _autoCalculatePoolCount(teamCount);
+      }
+      // 'force' keeps the user's config
     }
 
+    // Generate pools
+    final List<Pool> pools;
+    if (t.mode == 'championnat') {
+      pools = generateChampionnatPools(t.teams, poolCount: effectivePoolCount, targetScore: t.targetScore);
+    } else {
+      pools = generatePools(t.teams, poolCount: effectivePoolCount);
+    }
+    t.pools = pools;
     t.phase = 'pools';
 
     await TournamentStorage.saveTournament(t);
@@ -549,12 +637,34 @@ class _TournamentDashboardScreenState extends State<TournamentDashboardScreen>
     }
   }
 
-  int _calculatePoolCount(int teamCount) {
+  int _autoCalculatePoolCount(int teamCount) {
     if (teamCount <= 4) return 1;
     if (teamCount <= 8) return 2;
     if (teamCount <= 12) return 3;
     if (teamCount <= 16) return 4;
     return (teamCount / 4).ceil();
+  }
+
+  /// Returns an error message if pool config is incompatible, null if OK.
+  String? _validatePoolConfig(int teamCount, int poolCount, String mode) {
+    if (poolCount > teamCount) {
+      return 'Il y a plus de poules ($poolCount) que d\'équipes ($teamCount).';
+    }
+    final minPerPool = teamCount ~/ poolCount;
+    if (minPerPool < 2) {
+      final maxPools = teamCount ~/ 2;
+      return 'Certaines poules n\'auraient qu\'1 équipe avec $poolCount poules pour $teamCount équipes. '
+          'Maximum $maxPools poules possible.';
+    }
+    if (mode == 'championnat') {
+      final maxPerPool = (teamCount / poolCount).ceil();
+      if (maxPerPool > 4) {
+        final minPools = (teamCount / 4).ceil();
+        return 'En mode championnat, maximum 4 équipes par poule. '
+            'Il faut au moins $minPools poules pour $teamCount équipes.';
+      }
+    }
+    return null;
   }
 
   Widget _buildHeader(Tournament t, Color phaseCol, Color phaseBg, double progress, Color themeColor600) {

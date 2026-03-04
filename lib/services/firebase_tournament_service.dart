@@ -3,11 +3,11 @@ import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../firebase_options.dart';
 import '../models/tournament.dart';
 import '../models/shared_tournament_meta.dart';
 import '../models/registration.dart';
+import '../services/secure_storage_service.dart';
 
 class FirebaseTournamentService {
   static bool _initialized = false;
@@ -38,7 +38,7 @@ class FirebaseTournamentService {
   static String _generateShareCode() {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // No I/O/0/1
     final code =
-        List.generate(4, (_) => chars[_random.nextInt(chars.length)]).join();
+        List.generate(6, (_) => chars[_random.nextInt(chars.length)]).join();
     return 'PET-$code';
   }
 
@@ -128,13 +128,10 @@ class FirebaseTournamentService {
     });
   }
 
-  // --- Viewer: Local bookmarks (SharedPreferences) ---
-
-  static const _bookmarksKey = '@petanque/followed_tournaments';
+  // --- Viewer: Local bookmarks (SecureStorage) ---
 
   static Future<List<SharedTournamentMeta>> loadFollowedTournaments() async {
-    final prefs = await SharedPreferences.getInstance();
-    final json = prefs.getString(_bookmarksKey);
+    final json = await SecureStorageService.loadFollowedTournaments();
     if (json == null) return [];
     final list = jsonDecode(json) as List;
     return list
@@ -147,17 +144,15 @@ class FirebaseTournamentService {
     final list = await loadFollowedTournaments();
     if (list.any((m) => m.firestoreDocId == meta.firestoreDocId)) return;
     list.insert(0, meta);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-        _bookmarksKey, jsonEncode(list.map((m) => m.toJson()).toList()));
+    await SecureStorageService.saveFollowedTournaments(
+        jsonEncode(list.map((m) => m.toJson()).toList()));
   }
 
   static Future<void> unfollowTournament(String docId) async {
     final list = await loadFollowedTournaments();
     list.removeWhere((m) => m.firestoreDocId == docId);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-        _bookmarksKey, jsonEncode(list.map((m) => m.toJson()).toList()));
+    await SecureStorageService.saveFollowedTournaments(
+        jsonEncode(list.map((m) => m.toJson()).toList()));
   }
 
   // --- Registration: Player submits ---
@@ -199,6 +194,14 @@ class FirebaseTournamentService {
     await _ensureInitialized();
     await _db.collection('registrations').doc(regId).update({
       'status': 'rejected',
+      'reviewedAt': DateTime.now().toIso8601String(),
+    });
+  }
+
+  static Future<void> revokeRegistration(String regId) async {
+    await _ensureInitialized();
+    await _db.collection('registrations').doc(regId).update({
+      'status': 'pending',
       'reviewedAt': DateTime.now().toIso8601String(),
     });
   }

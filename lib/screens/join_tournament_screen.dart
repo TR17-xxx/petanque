@@ -179,11 +179,11 @@ class _JoinTournamentScreenState extends State<JoinTournamentScreen> {
                           controller: _codeController,
                           textCapitalization: TextCapitalization.characters,
                           inputFormatters: [
-                            LengthLimitingTextInputFormatter(8),
                             FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9\-]')),
+                            _ShareCodeFormatter(),
                           ],
                           decoration: InputDecoration(
-                            hintText: 'PET-XXXX',
+                            hintText: 'PET-XXXXXX',
                             hintStyle: const TextStyle(color: slate300, letterSpacing: 2),
                             filled: true,
                             fillColor: slate50,
@@ -350,6 +350,37 @@ class _JoinTournamentScreenState extends State<JoinTournamentScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Formats input as PET-XXXX automatically
+class _ShareCodeFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    // Extract only alphanumeric chars (no dashes)
+    final raw = newValue.text.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+
+    // Remove PET prefix if user typed it
+    final withoutPrefix = raw.startsWith('PET') ? raw.substring(3) : raw;
+
+    // Limit to 6 code chars
+    final code = withoutPrefix.length > 6 ? withoutPrefix.substring(0, 6) : withoutPrefix;
+
+    if (code.isEmpty) {
+      return const TextEditingValue(
+        text: '',
+        selection: TextSelection.collapsed(offset: 0),
+      );
+    }
+
+    final formatted = 'PET-$code';
+    return TextEditingValue(
+      text: formatted,
+      selection: TextSelection.collapsed(offset: formatted.length),
     );
   }
 }

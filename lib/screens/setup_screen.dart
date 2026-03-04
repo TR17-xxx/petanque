@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:lucide_icons/lucide_icons.dart';
@@ -138,6 +139,8 @@ class _SetupScreenState extends State<SetupScreen> {
                       const SizedBox(height: 8),
                       TextField(
                         controller: _team1Controller,
+                        textCapitalization: TextCapitalization.words,
+                        inputFormatters: [LengthLimitingTextInputFormatter(40)],
                         decoration: InputDecoration(
                           hintText: 'Nom de l\'équipe',
                           hintStyle: const TextStyle(color: slate400),
@@ -189,6 +192,8 @@ class _SetupScreenState extends State<SetupScreen> {
                       const SizedBox(height: 8),
                       TextField(
                         controller: _team2Controller,
+                        textCapitalization: TextCapitalization.words,
+                        inputFormatters: [LengthLimitingTextInputFormatter(40)],
                         decoration: InputDecoration(
                           hintText: 'Nom de l\'équipe',
                           hintStyle: const TextStyle(color: slate400),

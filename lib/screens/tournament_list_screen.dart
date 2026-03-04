@@ -6,6 +6,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 
 import 'package:petanque_score/models/tournament.dart';
 import 'package:petanque_score/services/tournament_storage.dart';
+import 'package:petanque_score/services/firebase_tournament_service.dart';
 import 'package:petanque_score/providers/theme_provider.dart';
 import 'package:petanque_score/utils/colors.dart';
 
@@ -131,6 +132,13 @@ class _TournamentListScreenState extends State<TournamentListScreen> {
     if (confirm != true || !mounted) return;
 
     for (final id in _selectedIds) {
+      // If tournament was shared, also stop sharing on Firestore
+      final t = _tournaments.where((t) => t.id == id).firstOrNull;
+      if (t != null && t.isShared && t.shareCode != null) {
+        try {
+          await FirebaseTournamentService.stopSharing(t);
+        } catch (_) {}
+      }
       await TournamentStorage.deleteTournament(id);
     }
     _cancelSelection();

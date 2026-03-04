@@ -10,6 +10,7 @@ class RegistrationList extends StatelessWidget {
   final void Function(String regId)? onApprove;
   final void Function(String regId)? onReject;
   final void Function(String regId)? onDelete;
+  final void Function(String regId)? onRevoke; // move approved → pending
   final Color themeColor600;
 
   const RegistrationList({
@@ -19,6 +20,7 @@ class RegistrationList extends StatelessWidget {
     this.onApprove,
     this.onReject,
     this.onDelete,
+    this.onRevoke,
     required this.themeColor600,
   });
 
@@ -190,8 +192,8 @@ class RegistrationList extends StatelessWidget {
             ),
           ],
 
-          // Action buttons (if manual approval and pending)
-          if (isManualApproval && reg.status == 'pending') ...[
+          // Action buttons for pending registrations (always shown)
+          if (reg.status == 'pending') ...[
             const SizedBox(height: 10),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
@@ -211,6 +213,34 @@ class RegistrationList extends StatelessWidget {
                   bgColor: const Color(0xFFECFDF5),
                   onTap: () => onApprove?.call(reg.id),
                 ),
+              ],
+            ),
+          ],
+
+          // Actions for approved registrations
+          if (reg.status == 'approved') ...[
+            const SizedBox(height: 10),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                if (onRevoke != null)
+                  _buildActionButton(
+                    icon: LucideIcons.undo2,
+                    label: 'En attente',
+                    color: const Color(0xFFF59E0B),
+                    bgColor: const Color(0xFFFFFBEB),
+                    onTap: () => onRevoke?.call(reg.id),
+                  ),
+                if (onRevoke != null && onDelete != null)
+                  const SizedBox(width: 8),
+                if (onDelete != null)
+                  _buildActionButton(
+                    icon: LucideIcons.trash2,
+                    label: 'Supprimer',
+                    color: const Color(0xFFEF4444),
+                    bgColor: const Color(0xFFFEF2F2),
+                    onTap: () => onDelete?.call(reg.id),
+                  ),
               ],
             ),
           ],

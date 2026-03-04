@@ -78,7 +78,7 @@ class AiMeasureService {
     }
     if (response.statusCode != 200) {
       throw Exception(
-        'Erreur API (${response.statusCode}): ${response.body}',
+        'Erreur du service d\'analyse (${response.statusCode}). Réessayez plus tard.',
       );
     }
 
@@ -107,7 +107,7 @@ class AiMeasureService {
       parsed = jsonDecode(jsonStr) as Map<String, dynamic>;
     } catch (e) {
       throw Exception(
-        'Réponse IA invalide. Essayez le mode manuel.\n\nRéponse brute : ${content.substring(0, content.length > 200 ? 200 : content.length)}',
+        'Réponse IA invalide. Essayez le mode manuel.',
       );
     }
 
