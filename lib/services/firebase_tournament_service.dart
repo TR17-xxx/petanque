@@ -82,7 +82,7 @@ class FirebaseTournamentService {
 
   static Future<void> pushTournamentUpdate(Tournament tournament) async {
     if (!tournament.isShared || tournament.shareCode == null) return;
-    await _ensureInitialized();
+    await _ensureAnonymousAuth();
 
     await _db.collection('tournaments').doc(tournament.id).update({
       ...tournament.toJson(),
@@ -94,9 +94,21 @@ class FirebaseTournamentService {
 
   static Future<void> stopSharing(Tournament tournament) async {
     if (tournament.shareCode == null) return;
-    await _ensureInitialized();
+    await _ensureAnonymousAuth();
 
+    // Delete share code index
     await _db.collection('share_codes').doc(tournament.shareCode!).delete();
+
+    // Delete all registrations for this tournament
+    final regSnap = await _db
+        .collection('registrations')
+        .where('tournamentId', isEqualTo: tournament.id)
+        .get();
+    for (final doc in regSnap.docs) {
+      await doc.reference.delete();
+    }
+
+    // Delete tournament document
     await _db.collection('tournaments').doc(tournament.id).delete();
 
     tournament.isShared = false;
@@ -163,7 +175,7 @@ class FirebaseTournamentService {
   }
 
   static Future<void> cancelRegistration(String regId) async {
-    await _ensureInitialized();
+    await _ensureAnonymousAuth();
     await _db.collection('registrations').doc(regId).delete();
   }
 
@@ -183,7 +195,7 @@ class FirebaseTournamentService {
   // --- Registration: Organizer manages ---
 
   static Future<void> approveRegistration(String regId) async {
-    await _ensureInitialized();
+    await _ensureAnonymousAuth();
     await _db.collection('registrations').doc(regId).update({
       'status': 'approved',
       'reviewedAt': DateTime.now().toIso8601String(),
@@ -191,7 +203,7 @@ class FirebaseTournamentService {
   }
 
   static Future<void> rejectRegistration(String regId) async {
-    await _ensureInitialized();
+    await _ensureAnonymousAuth();
     await _db.collection('registrations').doc(regId).update({
       'status': 'rejected',
       'reviewedAt': DateTime.now().toIso8601String(),
@@ -199,7 +211,7 @@ class FirebaseTournamentService {
   }
 
   static Future<void> revokeRegistration(String regId) async {
-    await _ensureInitialized();
+    await _ensureAnonymousAuth();
     await _db.collection('registrations').doc(regId).update({
       'status': 'pending',
       'reviewedAt': DateTime.now().toIso8601String(),
@@ -207,7 +219,7 @@ class FirebaseTournamentService {
   }
 
   static Future<void> deleteRegistration(String regId) async {
-    await _ensureInitialized();
+    await _ensureAnonymousAuth();
     await _db.collection('registrations').doc(regId).delete();
   }
 
